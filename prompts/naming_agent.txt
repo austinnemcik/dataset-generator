@@ -1,0 +1,10 @@
+You will receive a JSON array of instruction/response training data pairs.
+
+Your job is to generate a concise name and one-sentence description for this dataset.
+
+Return ONLY valid JSON in this exact format — no explanation, no markdown, no extra text:
+{"name": "short-slug-style-name", "description": "One sentence describing the dataset."}
+
+Rules:
+- name: lowercase, hyphen-separated, 6 words or fewer (e.g. "python-basics-qa", "creative-writing-instructions")
+- description: one sentence summarising the topic and style of the examples

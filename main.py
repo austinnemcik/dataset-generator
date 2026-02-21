@@ -10,6 +10,10 @@ import json
 from generics import response_builder
 app = FastAPI()
 
+class Example(BaseModel):
+    instruction: str
+    response: str
+
 class IngestExamples(BaseModel):
     raw: str | None = None
     example: list[Example] | None = None
@@ -17,22 +21,13 @@ class IngestExamples(BaseModel):
     dataset_description: str
     dataset_name: str
 
-class Example(BaseModel):
-    instruction: str
-    response: str
-    
-class Dataset(BaseModel):
-    name: str
-    description: str
-    examples: list[Example]
-
 @app.get('/')
 def get_root(): 
     return {"message": "Data Processing API"}
 
 @app.post('/ingest')
 def ingest_example(body: IngestExamples, session: Session = Depends(get_session)):
-    dataset_name = body.dataset_name or None = RandomNameGenerator()
+    dataset_name = body.dataset_name or RandomNameGenerator()
     dataset_description = body.dataset_description
     errors = 0
     examples = 0
@@ -92,7 +87,7 @@ def ingest_example(body: IngestExamples, session: Session = Depends(get_session)
             return response_builder(success=True, message="No training examples found", errors=errors, statusCode=404)
         session.add(dataset)
         session.commit()
-        return response_builder(success=True, message="Dataset successfully parsed and saved to database.", errors=errors, count=examples)
+        return response_builder(success=True, message="Dataset successfully parsed and saved to database.", errors=errors, count=examples, statusCode=200)
         
 @app.get("/datasets/{dataset_id}/export")
 def export_dataset(dataset_id: int, session: Session = Depends(get_session)):
@@ -123,13 +118,14 @@ def export_dataset(dataset_id: int, session: Session = Depends(get_session)):
 
     return FileResponse(filepath, filename=f"{dataset.name}.jsonl")
 
-@app.get("/datasets/{dataset_amount}")
+@app.get("/datasets/amount/{dataset_amount}")
 def all_datasets(dataset_amount: int, session: Session = Depends(get_session)):
     amount = dataset_amount
     if not dataset_amount:
         amount = 5
         # return 5 if we don't get an amount specified.
-    datasets = session.exec(select(Dataset)).limit(amount)
+    datasets = session.exec(
+    select(Dataset).order_by(Dataset.id).limit(amount)).all()
 
     details = []
     amt = 0
@@ -149,3 +145,7 @@ def all_datasets(dataset_amount: int, session: Session = Depends(get_session)):
         "message": f"Successfully returned {amt} datasets",
         "datasets": details
     })
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
