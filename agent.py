@@ -2,9 +2,9 @@ import json
 import requests
 from agents import Agent, Runner
 from dotenv import load_dotenv
-
+import os
 load_dotenv()
-
+_SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
 def load_prompt(name: str) -> str:
     with open(f"prompts/{name}.txt", "r", encoding="utf-8") as file:
         return file.read()
@@ -28,14 +28,14 @@ GENERATOR_AGENTS = [
 ]
 
 def save_responses(response_text: str):
-    # 1) Parse the agent output (examples)
+    # Parse the agent output (examples)
     try:
         examples = json.loads(response_text)
     except json.JSONDecodeError as e:
         print(f"[save_responses] Failed to parse agent output as JSON: {e}")
         return
 
-    # 2) Ask naming_agent for name + description
+    #  Ask naming_agent for name + description
     naming_prompt = f"""
 Generate a dataset name and description for the following examples.
 Return STRICT JSON: {{"name": "...", "description": "..."}}
@@ -52,7 +52,7 @@ Examples JSON:
         print("naming_agent output was:", naming_result.final_output)
         return
 
-    # 3) Build ingest payload
+    #  Build ingest payload
     payload = {
         "dataset_name": meta["name"],
         "dataset_description": meta["description"],
@@ -60,9 +60,9 @@ Examples JSON:
         "example": examples,
     }
 
-    # 4) POST to /ingest
+    # POST to /ingest
     try:
-        res = requests.post("http://localhost:8000/ingest", json=payload, timeout=30)
+        res = requests.post(f"{_SERVER_URL}/ingest", json=payload, timeout=30)
         res.raise_for_status()
         result = res.json()
         print(f"[save_responses] Ingest response: {result}")
