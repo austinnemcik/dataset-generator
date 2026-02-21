@@ -6,8 +6,11 @@ from sqlmodel import Session, select
 from database import get_session, Dataset, TrainingExample
 from funkybob import RandomNameGenerator
 import json
+import tempfile
+import os
 from generics import response_builder
-
+from enum import Enum
+from agent import generate_dataset, save_responses, qa_agent, instruction_following_agent, domain_specialist_agent,style_agent, adversarial_agent, conversation_agent, AgentType, agent_map
 class Example(BaseModel):
     instruction: str
     response: str
@@ -108,7 +111,7 @@ def export_dataset(dataset_id: int, session: Session = Depends(get_session)):
     
     jsonl_content = "\n".join(lines)
 
-    filepath = f"/tmp/{dataset.name}.jsonl"
+    filepath = os.path.join(tempfile.gettempdir(), f"{dataset.name}.jsonl")
     with open(filepath, "w", encoding='utf-8') as file:
         file.write(jsonl_content)
 
@@ -141,3 +144,20 @@ def all_datasets(dataset_amount: int, session: Session = Depends(get_session)):
         "message": f"Successfully returned {amt} datasets",
         "datasets": details
     })
+
+
+class Generation(BaseModel):
+    agent: AgentType
+    topic: str
+    amount: int
+    source_material: str | None = None # allow passing in source material to guide the dataset gen if applicable
+
+@data_router.post("/generate")
+def get_dataset(body: Generation):
+    agent_type = body.agent
+    topic = body.topic
+    amount = body.amount
+    source_material = body.source_material
+    dataset = generate_dataset(agent_type, topic, amount, source_material)
+    save_responses(dataset)
+    return response_builder(success=True, message="Successfully generated dataset", statusCode=201)

@@ -3,6 +3,7 @@ import requests
 from agents import Agent, Runner
 from dotenv import load_dotenv
 import os
+from enum import Enum
 load_dotenv()
 _SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
 def load_prompt(name: str) -> str:
@@ -18,30 +19,30 @@ style_agent = Agent(name="Style Agent", instructions=load_prompt("style_agent"))
 adversarial_agent = Agent(name="Adversarial Agent", instructions=load_prompt("adversarial_agent"))
 conversation_agent = Agent(name="Conversation Agent", instructions=load_prompt("conversation_agent"))
 
-GENERATOR_AGENTS = [
-    (qa_agent,                   "Generate 10 Q&A pairs about Python basics."),
-    (instruction_following_agent,"Generate 10 instruction-following examples covering a variety of tasks and output formats."),
-    (domain_specialist_agent,    "Generate 10 expert-level examples about machine learning concepts."),
-    (style_agent,                "Generate 10 writing style transformation examples across different tones and formats."),
-    (adversarial_agent,          "Generate 10 adversarial examples with tricky, ambiguous, or edge-case instructions."),
-    (conversation_agent,         "Generate 10 multi-turn conversation examples on everyday topics."),
-]
+class AgentType(str, Enum):
+    qa = "qa"
+    instruction_following = "instruction_following"
+    domain_specialist = "domain_specialist"
+    style = "style"
+    adversarial = "adversarial"
+    conversation = "conversation"
 
-def save_responses(response_text: str):
-    # Parse the agent output (examples)
-    try:
-        examples = json.loads(response_text)
-    except json.JSONDecodeError as e:
-        print(f"[save_responses] Failed to parse agent output as JSON: {e}")
-        return
-
-    #  Ask naming_agent for name + description
+agent_map = {
+    AgentType.qa: qa_agent,
+    AgentType.instruction_following: instruction_following_agent,
+    AgentType.domain_specialist: domain_specialist_agent,
+    AgentType.style: style_agent,
+    AgentType.adversarial: adversarial_agent,
+    AgentType.conversation: conversation_agent
+}
+def save_responses(examples: list[dict]):
+    # Ask naming_agent for name + description
     naming_prompt = f"""
 Generate a dataset name and description for the following examples.
 Return STRICT JSON: {{"name": "...", "description": "..."}}
 
 Examples JSON:
-{response_text}
+{json.dumps(examples)}
 """
     naming_result = Runner.run_sync(naming_agent, naming_prompt)
 
@@ -52,7 +53,7 @@ Examples JSON:
         print("naming_agent output was:", naming_result.final_output)
         return
 
-    #  Build ingest payload
+    # Build ingest payload
     payload = {
         "dataset_name": meta["name"],
         "dataset_description": meta["description"],
@@ -62,7 +63,7 @@ Examples JSON:
 
     # POST to /ingest
     try:
-        res = requests.post(f"{_SERVER_URL}/ingest", json=payload, timeout=30)
+        res = requests.post(f"{_SERVER_URL}/dataset/ingest", json=payload, timeout=30)
         res.raise_for_status()
         result = res.json()
         print(f"[save_responses] Ingest response: {result}")
@@ -70,7 +71,35 @@ Examples JSON:
     except requests.RequestException as e:
         print(f"[save_responses] Failed to POST to /ingest: {e}")
 
-for agent, prompt in GENERATOR_AGENTS:
-    print(f"[runner] Running {agent.name}...")
+def generate_dataset(agent_type: AgentType, topic: str, amt: int, source_material: str | None = None) -> list[dict]:
+    agent = agent_map[agent_type]
+    prompt = build_prompt(agent, topic, amt, source_material)
     result = Runner.run_sync(agent, prompt)
-    save_responses(result.final_output)
+    
+    try: 
+        examples = json.loads(result.final_output)
+    except json.JSONDecodeError:
+        raise ValueError("Agent returned malformed JSON")
+    
+    valid = [
+        ex for ex in examples 
+        if isinstance(ex, dict)
+        and "instruction" in ex
+        and "response" in ex
+        and len(ex["instruction"]) > 2
+        and len(ex["response"]) > 2
+    ]
+    return valid
+
+def build_prompt(agent: AgentType, topic: str, amt: int, source_material: str | None = None) -> str:
+    base = f"Generate {amt} diverse examples about {topic}, make sure to follow your instructions about formatting and return NOTHING besides JSON. Returning, or explaining your answers would be considered a FAILURE. JSON ARRAY ONLY"
+    if agent == AgentType.domain_specialist:
+        return f"""
+Using ONLY the following source material, generate {amt} training examples. 
+
+SOURCE MATERIAL:
+{source_material}
+
+Ensure you follow your instructions about formatting your response,  and ONLY return only JSON
+"""
+    return base

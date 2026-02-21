@@ -1,11 +1,12 @@
 from fastapi.responses import JSONResponse
 
 def valid_http(statusCode):
-    if (type(statusCode) != int):
+    if not isinstance(statusCode, int):
         return False
     return (statusCode > 100 and statusCode <= 599)
 
 def response_builder(
+        *,
         success: bool, 
         message: str, 
         count: int | None = None, 
