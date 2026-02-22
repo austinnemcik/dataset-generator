@@ -18,8 +18,10 @@ class Dataset(SQLModel, table=True):
 
 class TrainingExample(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
+    prompt: str
     instruction: str
     response: str
     dataset_id: int = Field(foreign_key="dataset.id")
     dataset: "Dataset" = Relationship(back_populates="examples")
+    embedding: str | None = None 
 

@@ -4,14 +4,36 @@ from agents import Agent, Runner
 from dotenv import load_dotenv
 import os
 from enum import Enum
+from openai import OpenAI
+import numpy as np
 load_dotenv()
 _SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
+THRESHOLD = 0.8
+client = OpenAI()
+
+def get_embedding(text: str):
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    )
+    return response.data[0].embedding
+
 def load_prompt(name: str) -> str:
     with open(f"prompts/{name}.txt", "r", encoding="utf-8") as file:
         return file.read()
+    
+def cosine_similarity(a: list[float], b: list[float]):
+    a = np.array(a)
+    b = np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+def is_duplicate(new_embedding: list[float], existing_embeddings: list[list[float]], threshold: float = THRESHOLD):
+    for existing in existing_embeddings: 
+        if cosine_similarity(new_embedding, existing) >= threshold:
+            return True
+    return False
 
 naming_agent = Agent(name="Naming Agent", instructions=load_prompt("naming_agent"))
-
 qa_agent = Agent(name="Q&A Agent", instructions=load_prompt("qa_agent"))
 instruction_following_agent = Agent(name="Instruction Following Agent", instructions=load_prompt("instruction_following_agent"))
 domain_specialist_agent = Agent(name="Domain Specialist Agent", instructions=load_prompt("domain_specialist_agent"))
@@ -35,6 +57,7 @@ agent_map = {
     AgentType.adversarial: adversarial_agent,
     AgentType.conversation: conversation_agent
 }
+
 def save_responses(examples: list[dict]):
     # Ask naming_agent for name + description
     naming_prompt = f"""
