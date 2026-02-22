@@ -10,7 +10,7 @@ import tempfile
 import os
 from generics import response_builder
 from agent import get_embedding, cosine_similarity, is_duplicate, generate_dataset, save_responses
-from agent import qa_agent, instruction_following_agent, domain_specialist_agent,style_agent, adversarial_agent, conversation_agent, AgentType, agent_map ##2 lines, cleaner
+from agent import Runner, naming_agent, qa_agent, instruction_following_agent, domain_specialist_agent,style_agent, adversarial_agent, conversation_agent, AgentType, agent_map ##2 lines, cleaner
 
 class Example(BaseModel):
     prompt: str
@@ -18,7 +18,6 @@ class Example(BaseModel):
     response: str
 
 class IngestExamples(BaseModel):
-    raw: str | None = None
     example: list[Example] | None = None
     dataset_id: int
     dataset_description: str
@@ -29,6 +28,10 @@ class Generation(BaseModel):
     topic: str
     amount: int
     source_material: str | None = None # allow passing in source material to guide the dataset gen if applicable
+
+class MergeRequest(BaseModel):
+    dataset_ids: list[int]
+    delete_originals: bool = False
 
 data_router = APIRouter(prefix="/dataset", tags=["dataset"])
 
@@ -60,44 +63,15 @@ def ingest_example(body: IngestExamples, session: Session = Depends(get_session)
             existing_embeddings.append(embedding)
 
             dataset.examples.append(TrainingExample
-                (instruction=instruction,
+                (prompt=prompt, instruction=instruction,
                 response=response, embedding=embedding_str))
             example_amount += 1
         if len(dataset.examples) < 1:
-            return response_builder(success=True, message="No examples found!", errors=errors, statusCode=404)
+            return response_builder(success=False, message="No examples found!", errors=errors, statusCode=404)
         session.add(dataset)
         session.commit()
         return response_builder(success=True, message="Dataset succesfully parsed and saved to databse.", errors=errors, count=example_amount, statusCode=201) 
-            
-    if (body.raw):
-        raw = body.raw
-        pairs = raw.split("----")   
-        for pair in pairs:
-            if (pair.strip() == ""):
-                errors += 1
-                continue
-            parts = pair.strip().split("---", 1)
-            if len(parts) < 2:
-                errors += 1
-                continue
-            instruction = parts[0].strip()
-            model_response = parts[1].strip()
-            if len(instruction) < 2 or len(model_response) < 2:
-                errors += 1
-                continue
-            embedding = get_embedding([instruction])
-            embedding_str = json.dumps(embedding)  # save as json string to avoid pgvector for now
-            dataset.examples.append(TrainingExample(
-                instruction = instruction,
-                response = model_response,
-                embedding=embedding_str))
-            example_amount += 1
-        # once that loop is finished.  save
-        if len(dataset.examples) == 0:
-            return response_builder(success=True, message="No training examples found", errors=errors, statusCode=404)
-        session.add(dataset)
-        session.commit()
-        return response_builder(success=True, message="Dataset successfully parsed and saved to database.", errors=errors, count=example_amount, statusCode=200)
+    return response_builder(success=False, message="An error occurred with the formatting of this example.", statusCode=400)
         
 @data_router.get("/{dataset_id}/export")
 def export_dataset(dataset_id: int, session: Session = Depends(get_session)):
@@ -159,6 +133,7 @@ def all_datasets(dataset_amount: int, session: Session = Depends(get_session)):
 
 @data_router.post("/generate")
 def get_dataset(body: Generation):
+
     agent_type = body.agent
     topic = body.topic
     amount = body.amount
@@ -166,3 +141,57 @@ def get_dataset(body: Generation):
     dataset = generate_dataset(agent_type, topic, amount, source_material)
     save_responses(dataset)
     return response_builder(success=True, message="Successfully generated dataset", statusCode=201)
+
+@data_router.delete("/remove")
+def delete_dataset(body: Dataset, session: Session = Depends(get_session)):
+    dataset = session.get(Dataset, body.dataset_id)
+    session.delete(dataset)                                               # we should disable this endpoint by default so it doesn't get exposed since it's not behind auth,  although neither is the rest of it yet. maybe v2
+    session.commit()
+    response_builder(success=True, message=f"Successfully removed Dataset {dataset.name}", statusCode=200)    
+
+@data_router.post("/merge")
+def merge_datasets(body: MergeRequest, session: Session = Depends(get_session)):
+    errors = 0
+    example_count = 0
+    dataset_count = 0
+    all_datasets: Dataset = []
+    all_examples: TrainingExample = []
+    for id in body.dataset_ids:
+        dataset = session.get(Dataset, id)
+        if not dataset: 
+            errors += 1
+            continue
+        examples = session.exec(select(TrainingExample).where(TrainingExample.dataset_id == id)).all()
+        dataset_count += 1
+        all_datasets.append(dataset)
+        example_count += len(examples)
+        all_examples.extend(examples) # extend adds the whole list,  append just one item
+    
+    naming_prompt = f"""
+    Generate a dataset name and description for a dataset combining these dataset names.
+    Return STRICT JSON: {{"name": "...", "description": "..."}}
+
+    Names JSON:
+    {json.dumps([dataset.name for dataset in all_datasets])}
+    """
+    naming_result = Runner.run_sync(naming_agent, naming_prompt)
+
+    try:
+        meta = json.loads(naming_result.final_output)
+    except json.JSONDecodeError as e:
+        print(f"[save_responses] Failed to parse naming_agent output: {e}")
+        print("naming_agent output was:", naming_result.final_output)
+        return
+
+    dataset = Dataset(name=meta["name"], description=meta["description"], examples=all_examples)
+    session.add(dataset)
+    
+    if(body.delete_originals == True):
+        for ds in all_datasets:
+            session.delete(ds)
+        session.commit()
+        return response_builder(success=True, statusCode=201, message=f"Successfully deleted {dataset_count} datasets with {example_count} examples and merged into 1 dataset.", errors=errors)
+    session.commit()
+    return response_builder(success=True, statusCode=201, message=f"Successfully added new dataset with {example_count} examples", errors=errors)
+
+

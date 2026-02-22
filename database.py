@@ -14,7 +14,7 @@ class Dataset(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True) # this will automatically set an id if None
     name: str
     description: str | None = None
-    examples: list["TrainingExample"] = Relationship(back_populates="dataset")
+    examples: list["TrainingExample"] = Relationship(back_populates="dataset", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 class TrainingExample(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
