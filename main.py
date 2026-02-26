@@ -4,16 +4,6 @@ from routes.dataset import data_router
 app = FastAPI()
 app.include_router(data_router)
 
-class Example(BaseModel):
-    instruction: str
-    response: str
-
-class IngestExamples(BaseModel):
-    raw: str | None = None
-    example: list[Example] | None = None
-    dataset_id: int
-    dataset_description: str
-    dataset_name: str
 @app.get('/')
 def get_root(): 
     return {"message": "Data Processing API"}

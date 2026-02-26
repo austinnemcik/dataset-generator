@@ -1,19 +1,23 @@
-from datetime import datetime
 import os
+import logging
+from logging.handlers import RotatingFileHandler
+
 LOG_FILE = "logs/log.txt"
-def saveToLog(message: str):
-    now = datetime.now()
-    formatted_timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-    with open (LOG_FILE, "a", encoding="utf-8") as file:
-        file.write(f"{formatted_timestamp}: {message}")
-        return True
+os.makedirs("logs", exist_ok=True)
 
-        # later we can make log location from .env so it's a little more flexible but need default anyways.
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
-def deleteLog():
-    try: 
-        os.remove(LOG_FILE)
-        print(f"Successfully removed file at {LOG_FILE}")
-    except OSError as e:
-        print(f"Error: {e.strerror}")
-    
+handler = RotatingFileHandler(LOG_FILE, maxBytes=5_000_000, backupCount=3)
+handler.setFormatter(logging.Formatter("%(asctime)s: %(message)s"))
+logger.addHandler(handler)
+
+
+def saveToLog(message: str, logType: str):
+    if logType == "INFO":
+        logging.info(message)
+    elif logType == "WARNING":
+        logging.warning(message)
+    elif logType == "ERROR":
+        logging.error(message)
+    return
