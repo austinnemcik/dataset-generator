@@ -17,8 +17,8 @@ from agent import (
     is_duplicate,
     generate_dataset,
     save_responses,
-    run_agent_async,
 )
+import logger
 
 
 class Example(BaseModel):
@@ -35,12 +35,11 @@ class IngestExamples(BaseModel):
 
 
 class Generation(BaseModel):
-    agent: AgentType
+    agent_type: AgentType
     topic: str
     amount: int
-    source_material: str | None = (
-        None  # allow passing in source material to guide the dataset gen if applicable
-    )
+    source_material: str | None = None  # allow passing in source material to guide the dataset gen if applicable
+    model: str | None = None
 
 
 class MergeRequest(BaseModel):
@@ -59,55 +58,53 @@ def ingest_example(body: IngestExamples, session: Session = Depends(get_session)
     example_amount = 0
     dataset = Dataset(name=dataset_name, description=dataset_description, examples=[])
     existing_embeddings = []
-    if not (body.example):
-        print("Bad body formatting")
-    if not (body != IngestExamples):
-        print("Bad body formatting EXAMPLE ")
+    with timer(label=TimedLabel.INGEST_REQUEST):
+        if body.example:
+            for ex in body.example:
+                prompt = body.prompt
+                instruction = ex.instruction
+                response = ex.response
+                if len(instruction) < 2 or len(response) < 2 or len(prompt) < 2:
+                    errors += 1  # could be interesting to have an error list, add better errors then we can return it.  maybe in v2
+                    logger.saveToLog(
+                        "Discading example with reason: BAD RESPONSE.. continuing",
+                        "WARNING",
+                    )
+                    continue
+                embedding = get_embedding(ex.instruction)
+                embedding_str = json.dumps(
+                    embedding
+                )  # save as json string to avoid pgvector for now
+                if is_duplicate(embedding, existing_embeddings):
+                    errors += 1
+                    continue
+                existing_embeddings.append(embedding)
 
-    if body.example:
-        for ex in body.example:
-            prompt = body.prompt
-            instruction = ex.instruction
-            response = ex.response
-            if len(instruction) < 2 or len(response) < 2 or len(prompt) < 2:
-                errors += 1  # could be interesting to have an error list, add better errors then we can return it.  maybe in v2
-                print("Bad example,  adding error")
-                continue
-            embedding = get_embedding(ex.instruction)
-            embedding_str = json.dumps(
-                embedding
-            )  # save as json string to avoid pgvector for now
-            if is_duplicate(embedding, existing_embeddings):
-                errors += 1
-                print("Example entry, skipping..")
-                continue
-            existing_embeddings.append(embedding)
-
-            dataset.examples.append(
-                TrainingExample(
-                    prompt=prompt,
-                    instruction=instruction,
-                    response=response,
-                    embedding=embedding_str,
+                dataset.examples.append(
+                    TrainingExample(
+                        prompt=prompt,
+                        instruction=instruction,
+                        response=response,
+                        embedding=embedding_str,
+                    )
                 )
-            )
-            example_amount += 1
-        if len(dataset.examples) < 1:
+                example_amount += 1
+            if len(dataset.examples) < 1:
+                return response_builder(
+                    success=False,
+                    message="No examples found!",
+                    errors=errors,
+                    statusCode=404,
+                )
+            session.add(dataset)
+            session.commit()
             return response_builder(
-                success=False,
-                message="No examples found!",
+                success=True,
+                message="Dataset succesfully parsed and saved to databse.",
                 errors=errors,
-                statusCode=404,
+                count=example_amount,
+                statusCode=201,
             )
-        session.add(dataset)
-        session.commit()
-        return response_builder(
-            success=True,
-            message="Dataset succesfully parsed and saved to databse.",
-            errors=errors,
-            count=example_amount,
-            statusCode=201,
-        )
     return response_builder(
         success=False,
         message="An error occurred with the formatting of this example.",
@@ -183,12 +180,18 @@ def all_datasets(dataset_amount: int, session: Session = Depends(get_session)):
 @data_router.post("/generate")
 async def get_dataset(body: Generation):
 
-    agent_type = body.agent
+    agent_type = body.agent_type
     topic = body.topic
     amount = body.amount
     source_material = body.source_material
-    dataset, prompt = await generate_dataset(agent_type, topic, amount, source_material)
-    await save_responses(examples=dataset, prompt=prompt)
+    model = body.model
+    print("calling_agent")
+    if body.model:
+        dataset, prompt = await generate_dataset(agent_type=agent_type, topic=topic, amt=amount, source_material=source_material, model=model)
+    else: 
+        dataset, prompt = await generate_dataset(agent_type=agent_type, topic=topic, amt=amount, source_material=source_material)
+    print("agent returned")
+    await save_responses(examples=dataset, prompt=prompt, topic=topic, model=model, amount=amount)
     return response_builder(
         success=True, message="Successfully generated dataset", statusCode=201
     )

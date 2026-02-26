@@ -13,11 +13,11 @@ handler.setFormatter(logging.Formatter("%(asctime)s: %(message)s"))
 logger.addHandler(handler)
 
 
-def saveToLog(message: str, logType: str):
+def saveToLog(message: str, logType: str = "INFO"):
     if logType == "INFO":
-        logging.info(message)
+        logger.info(message)
     elif logType == "WARNING":
-        logging.warning(message)
+        logger.warning(message)
     elif logType == "ERROR":
-        logging.error(message)
+        logger.error(message)
     return
