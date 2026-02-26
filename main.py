@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from routes.dataset import data_router
-from generics import response_builder
 app = FastAPI()
 app.include_router(data_router)
 

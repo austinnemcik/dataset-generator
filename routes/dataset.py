@@ -9,16 +9,14 @@ import json
 import tempfile
 import os
 from generics import response_builder
-from agent import get_embedding, cosine_similarity, is_duplicate, generate_dataset, save_responses
-from agent import Runner, naming_agent, qa_agent, instruction_following_agent, domain_specialist_agent,style_agent, adversarial_agent, conversation_agent, AgentType, agent_map ##2 lines, cleaner
-
+from agent import AgentType,run_naming_agent,  get_embedding, cosine_similarity, is_duplicate, generate_dataset, save_responses, run_agent
 class Example(BaseModel):
-    prompt: str
     instruction: str
     response: str
 
 class IngestExamples(BaseModel):
     example: list[Example] | None = None
+    prompt: str
     dataset_id: int
     dataset_description: str
     dataset_name: str
@@ -46,19 +44,23 @@ def ingest_example(body: IngestExamples, session: Session = Depends(get_session)
             description=dataset_description,
             examples = [])
     existing_embeddings = []
+    if not (body.example): print("Bad body formatting")
+    if not (body != IngestExamples): print("Bad body formatting EXAMPLE ")
 
     if (body.example):
         for ex in body.example:
-            prompt = ex.prompt
+            prompt = body.prompt
             instruction = ex.instruction
             response = ex.response
             if (len(instruction) < 2 or len(response) < 2 or len(prompt) < 2):
                 errors += 1  # could be interesting to have an error list, add better errors then we can return it.  maybe in v2
+                print("Bad example,  adding error")
                 continue
             embedding = get_embedding(ex.instruction)
             embedding_str = json.dumps(embedding)  # save as json string to avoid pgvector for now
             if is_duplicate(embedding, existing_embeddings):
                 errors += 1
+                print("Example entry, skipping..")
                 continue
             existing_embeddings.append(embedding)
 
@@ -138,16 +140,16 @@ def get_dataset(body: Generation):
     topic = body.topic
     amount = body.amount
     source_material = body.source_material
-    dataset = generate_dataset(agent_type, topic, amount, source_material)
-    save_responses(dataset)
+    dataset, prompt = generate_dataset(agent_type, topic, amount, source_material)
+    save_responses(examples=dataset, prompt=prompt)
     return response_builder(success=True, message="Successfully generated dataset", statusCode=201)
 
-@data_router.delete("/remove")
-def delete_dataset(body: Dataset, session: Session = Depends(get_session)):
-    dataset = session.get(Dataset, body.dataset_id)
+@data_router.delete("/remove/{dataset_id}")
+def delete_dataset(dataset_id: int, session: Session = Depends(get_session)):
+    dataset = session.get(Dataset, dataset_id)
     session.delete(dataset)                                               # we should disable this endpoint by default so it doesn't get exposed since it's not behind auth,  although neither is the rest of it yet. maybe v2
     session.commit()
-    response_builder(success=True, message=f"Successfully removed Dataset {dataset.name}", statusCode=200)    
+    return response_builder(success=True, message=f"Successfully removed Dataset {dataset.name}", statusCode=200)    
 
 @data_router.post("/merge")
 def merge_datasets(body: MergeRequest, session: Session = Depends(get_session)):
@@ -167,21 +169,10 @@ def merge_datasets(body: MergeRequest, session: Session = Depends(get_session)):
         example_count += len(examples)
         all_examples.extend(examples) # extend adds the whole list,  append just one item
     
-    naming_prompt = f"""
-    Generate a dataset name and description for a dataset combining these dataset names.
-    Return STRICT JSON: {{"name": "...", "description": "..."}}
-
-    Names JSON:
-    {json.dumps([dataset.name for dataset in all_datasets])}
-    """
-    naming_result = Runner.run_sync(naming_agent, naming_prompt)
-
     try:
-        meta = json.loads(naming_result.final_output)
-    except json.JSONDecodeError as e:
-        print(f"[save_responses] Failed to parse naming_agent output: {e}")
-        print("naming_agent output was:", naming_result.final_output)
-        return
+        meta = run_naming_agent(all_examples)
+    except: return response_builder(success=False, statusCode=400, message="An error occurred when calling the naming agent")
+
 
     dataset = Dataset(name=meta["name"], description=meta["description"], examples=all_examples)
     session.add(dataset)

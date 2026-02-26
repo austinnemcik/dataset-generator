@@ -1,25 +1,40 @@
 import json
 import requests
-from agents import Agent, Runner
 from dotenv import load_dotenv
 import os
 from enum import Enum
 from openai import OpenAI
 import numpy as np
+import asyncio
+from generics import timer
+
 load_dotenv()
 _SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
+_API_KEY = os.getenv("OPENROUTER_API_KEY")
 THRESHOLD = 0.8
-client = OpenAI()
+DEFAULT_MODEL = "minimax/minimax-m2.5"
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=_API_KEY
+)
+
+class AgentType(str, Enum):
+    qa = "qa"
+    instruction_following = "instruction_following"
+    domain_specialist = "domain_specialist"
+    style = "style"
+    adversarial = "adversarial"
+    conversation = "conversation"
 
 def get_embedding(text: str):
     response = client.embeddings.create(
-        model="text-embedding-3-small",
+        model="openai/text-embedding-3-small",
         input=text
     )
     return response.data[0].embedding
 
 def load_prompt(name: str) -> str:
-    with open(f"prompts/{name}.txt", "r", encoding="utf-8") as file:
+    with open(f"prompts/{name}_agent.txt", "r", encoding="utf-8") as file:
         return file.read()
     
 def cosine_similarity(a: list[float], b: list[float]):
@@ -33,57 +48,34 @@ def is_duplicate(new_embedding: list[float], existing_embeddings: list[list[floa
             return True
     return False
 
-naming_agent = Agent(name="Naming Agent", instructions=load_prompt("naming_agent"))
-qa_agent = Agent(name="Q&A Agent", instructions=load_prompt("qa_agent"))
-instruction_following_agent = Agent(name="Instruction Following Agent", instructions=load_prompt("instruction_following_agent"))
-domain_specialist_agent = Agent(name="Domain Specialist Agent", instructions=load_prompt("domain_specialist_agent"))
-style_agent = Agent(name="Style Agent", instructions=load_prompt("style_agent"))
-adversarial_agent = Agent(name="Adversarial Agent", instructions=load_prompt("adversarial_agent"))
-conversation_agent = Agent(name="Conversation Agent", instructions=load_prompt("conversation_agent"))
-
-class AgentType(str, Enum):
-    qa = "qa"
-    instruction_following = "instruction_following"
-    domain_specialist = "domain_specialist"
-    style = "style"
-    adversarial = "adversarial"
-    conversation = "conversation"
-
-agent_map = {
-    AgentType.qa: qa_agent,
-    AgentType.instruction_following: instruction_following_agent,
-    AgentType.domain_specialist: domain_specialist_agent,
-    AgentType.style: style_agent,
-    AgentType.adversarial: adversarial_agent,
-    AgentType.conversation: conversation_agent
-}
+async def run_agent_async(*, system_prompt: str, user_prompt: str, model: str = DEFAULT_MODEL):
+    with timer("agent request"):
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+    return response.choices[0].message.content
 
 
-def save_responses(examples: list[dict]):
-    # Ask naming_agent for name + description
-    naming_prompt = f"""
-Generate a dataset name and description for the following examples.
-Return STRICT JSON: {{"name": "...", "description": "..."}}
+def save_responses(*, prompt: str, examples: list[dict]):
+    meta = run_naming_agent(examples)
 
-Examples JSON:
-{json.dumps(examples)}
-"""
-    naming_result = Runner.run_sync(naming_agent, naming_prompt)
-
-    try:
-        meta = json.loads(naming_result.final_output)
-    except json.JSONDecodeError as e:
-        print(f"[save_responses] Failed to parse naming_agent output: {e}")
-        print("naming_agent output was:", naming_result.final_output)
+    if not meta: 
+        print("[save_responses] Naming agent failed.. aborting")
         return
-
     # Build ingest payload
     payload = {
         "dataset_name": meta["name"],
         "dataset_description": meta["description"],
         "dataset_id": 0,
         "example": examples,
+        "prompt": prompt
     }
+    print(payload)
 
     # POST to /ingest
     try:
@@ -96,12 +88,12 @@ Examples JSON:
         print(f"[save_responses] Failed to POST to /ingest: {e}")
 
 def generate_dataset(agent_type: AgentType, topic: str, amt: int, source_material: str | None = None) -> list[dict]:
-    agent = agent_map[agent_type]
-    prompt = build_prompt(agent, topic, amt, source_material)
-    result = Runner.run_sync(agent, prompt)
+    system = load_prompt(agent_type.value)
+    prompt = build_prompt(system, topic, amt, source_material)
+    result = run_agent_async(system_prompt=system,user_prompt=prompt)
     
     try: 
-        examples = json.loads(result.final_output)
+        examples = json.loads(result)
     except json.JSONDecodeError:
         raise ValueError("Agent returned malformed JSON")
     
@@ -113,7 +105,7 @@ def generate_dataset(agent_type: AgentType, topic: str, amt: int, source_materia
         and len(ex["instruction"]) > 2
         and len(ex["response"]) > 2
     ]
-    return valid
+    return valid, prompt
 
 def build_prompt(agent: AgentType, topic: str, amt: int, source_material: str | None = None) -> str:
     base = f"Generate {amt} diverse examples about {topic}, make sure to follow your instructions about formatting and return NOTHING besides JSON. Returning, or explaining your answers would be considered a FAILURE. JSON ARRAY ONLY"
@@ -127,3 +119,22 @@ SOURCE MATERIAL:
 Ensure you follow your instructions about formatting your response,  and ONLY return only JSON
 """
     return base
+
+def run_naming_agent(examples: list[dict]):
+    # Ask naming_agent for name + description
+    naming_prompt = f"""
+Generate a dataset name and description for the following examples.
+Return STRICT JSON: {{"name": "...", "description": "..."}}
+
+Examples JSON:
+{json.dumps(examples)}
+"""
+    naming_result = run_agent_async(system_prompt=load_prompt("naming"), user_prompt=naming_prompt)
+
+    try:
+        meta = json.loads(naming_result)
+        return meta
+    except json.JSONDecodeError as e:
+        print(f"[save_responses] Failed to parse naming_agent output: {e}")
+        print("naming_agent output was:", naming_result)
+        return
