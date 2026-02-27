@@ -10,13 +10,16 @@ load_dotenv()
 
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
 API_KEY = os.getenv("OPENROUTER_API_KEY")
-DEFAULT_MODEL = "google/gemini-3-flash-preview"
+DEFAULT_MODEL = "z-ai/glm-5"
+GRADING_MODEL = "google/gemini-2.5-flash"
 THRESHOLD = 0.8
 
 MIN_GRADING_SCORE = 8.0
 MIN_RESPONSE_CHAR_LENGTH = 40
 MAX_GRADING_JSON_RETRIES = 2
 MAX_LOW_QUALITY_RETRIES = 1
+MAX_GENERATION_RETRIES = 1
+MIN_SAVE_RATIO = 0.8
 
 MODEL_PRICING: dict[str, dict[str, float]] = {}
 client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=API_KEY)

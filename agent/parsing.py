@@ -46,7 +46,45 @@ def _normalize_json_like_text(text: str) -> str:
     return normalized
 
 
-def parse_json_with_fallback(raw: str):
+def _has_unbalanced_structure(text: str) -> bool:
+    stack: list[str] = []
+    in_string = False
+    escaped = False
+    for ch in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch in "[{":
+            stack.append(ch)
+        elif ch in "]}":
+            if not stack:
+                return True
+            top = stack.pop()
+            if (top == "[" and ch != "]") or (top == "{" and ch != "}"):
+                return True
+    return in_string or bool(stack)
+
+
+def _looks_truncated_json(text: str) -> bool:
+    trimmed = text.strip()
+    if not trimmed:
+        return True
+    starts_json = trimmed[0] in "[{"
+    ends_json = trimmed[-1] in "]}"
+    if starts_json and not ends_json:
+        return True
+    return _has_unbalanced_structure(trimmed)
+
+
+def parse_json_with_fallback(raw: str, *, require_top_level_list: bool = False):
     candidates: list[str] = []
     seen: set[str] = set()
 
@@ -56,6 +94,8 @@ def parse_json_with_fallback(raw: str):
             candidates.append(text)
 
     base = _strip_common_artifacts(raw)
+    if require_top_level_list and _looks_truncated_json(base):
+        raise json.JSONDecodeError("Likely truncated or unbalanced JSON output", base, 0)
     no_fence = _strip_markdown_fences(base)
     extracted = _extract_first_json_value(no_fence)
     normalized = _normalize_json_like_text(extracted)
@@ -69,11 +109,17 @@ def parse_json_with_fallback(raw: str):
     last_error: json.JSONDecodeError | None = None
     for candidate in candidates:
         try:
-            return json.loads(candidate)
+            parsed = json.loads(candidate)
+            if require_top_level_list and not isinstance(parsed, list):
+                continue
+            return parsed
         except json.JSONDecodeError as e:
             last_error = e
 
     if last_error:
         raise last_error
-    return json.loads(raw)
+    parsed = json.loads(raw)
+    if require_top_level_list and not isinstance(parsed, list):
+        raise json.JSONDecodeError("Top-level JSON must be an array", raw, 0)
+    return parsed
 

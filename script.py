@@ -4,20 +4,17 @@ import httpx
 SERVER_URL = "http://localhost:8000"
 
 MODELS = [
-    "openai/gpt-5-mini",
-    "openai/gpt-4.1-mini",
-    "deepseek/deepseek-v3.2",
     "google/gemini-2.5-flash",
     "z-ai/glm-5",
-    "bytedance-seed/seed-2.0-mini",
+    "bytedance-seed/seed-2.0-mini"
 ]
 
 TOPICS = [
-    {"agent_type": "qa", "topic": "Common Python debugging techniques and error handling", "amount": 20},
-    {"agent_type": "qa", "topic": "Tradeoffs between relational and NoSQL databases", "amount": 20},
-    {"agent_type": "qa", "topic": "Object oriented programming principles in Python", "amount": 20},
-    {"agent_type": "qa", "topic": "Git workflow and version control strategies", "amount": 20},
-    {"agent_type": "adversarial", "topic": "Common security vulnerabilities in web applications", "amount": 20},
+    {"agent_type": "adversarial", "topic": "Common misconceptions about async programming in Python", "amount": 20},
+    {"agent_type": "qa", "topic": "Designing RESTful APIs that are intuitive and maintainable", "amount": 20},
+    {"agent_type": "instruction_following", "topic": "Refactoring poorly written Python code for readability and performance", "amount": 20},
+    {"agent_type": "qa", "topic": "Understanding memory management and garbage collection in Python", "amount": 20},
+    {"agent_type": "adversarial", "topic": "Common mistakes developers make when implementing authentication and authorization", "amount": 20},
 ]
 
 async def send(client: httpx.AsyncClient, payload: dict, model: str):

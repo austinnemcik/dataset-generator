@@ -1,39 +1,19 @@
 import json
-import re
-from datetime import datetime, timezone
-from pathlib import Path
 
-import asyncio
 import logger
 from generics import TimedLabel, saveScore, timer
 
-from .embeddings import get_embedding, is_duplicate
 from .llm import run_agent_async
 from .parsing import parse_json_with_fallback
 from .prompts import load_prompt
 from .settings import (
     DEFAULT_MODEL,
+    GRADING_MODEL,
     MAX_GRADING_JSON_RETRIES,
-    MAX_LOW_QUALITY_RETRIES,
     MIN_GRADING_SCORE,
     MIN_RESPONSE_CHAR_LENGTH,
 )
 from .types import AgentType
-
-
-def _slugify(text: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", text.strip().lower()).strip("-")
-    return slug or "unknown"
-
-
-def _write_grading_audit(payload: dict):
-    logs_dir = Path("logs")
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
-    topic_slug = _slugify(payload.get("topic", "unknown"))
-    out = logs_dir / f"grading_audit_{stamp}_{topic_slug}.json"
-    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    logger.saveToLog(f"[run_grading_agent] Saved grading audit: {out}", "INFO")
 
 
 async def run_grading_agent(
@@ -42,10 +22,17 @@ async def run_grading_agent(
     topic: str,
     agent_type: AgentType,
     source_material: str | None = None,
+    run_id: str | None = None,
+    dataset_key: str | None = None,
 ):
     model = model or DEFAULT_MODEL
 
-    async def _grade_with_json_retries(candidate: dict, duplicate_instruction: int, length: int):
+    async def _grade_batch_with_json_retries(
+        batch_examples: list[dict],
+        *,
+        stage: str,
+        tag: str,
+    ):
         retries = 0
         last_error = None
         while retries <= MAX_GRADING_JSON_RETRIES:
@@ -53,265 +40,230 @@ async def run_grading_agent(
             if retries > 0:
                 retry_note = (
                     "\n\nPrevious output failed JSON parsing. "
-                    "Return ONLY one valid raw JSON object. No markdown, no code fences."
+                    "Return ONLY one valid raw JSON object. No markdown/code fences."
                 )
-            grading_result = await run_agent_async(
-                system_prompt=load_prompt("grading"),
-                user_prompt=f"""
-            USER PROMPT TEMPLATE
-            Grade this single instruction/response pair using the rubric in your instructions.
-
-            Metadata:
-            - model: {model}
-            - topic: {topic}
-
-            Dataset-level checks:
-            - exact_item_count_20: {length}
-            - duplicate_instruction: {duplicate_instruction}
-
-            Candidate item JSON:
-            {json.dumps(candidate)}
-
-            Return exactly one JSON object using the required schema.
-            No markdown. No extra text.{retry_note}
-            """,
-            )
-            try:
-                return parse_json_with_fallback(grading_result), retries, None
-            except json.JSONDecodeError as e:
-                last_error = e
-                retries += 1
-        return None, retries - 1, f"grading_json_parse_error: {last_error}"
-
-    async def _regenerate_low_quality_example(candidate: dict, reason: str):
-        retry_prompt = f"""
-Improve this single training example for topic "{topic}".
-Return ONLY a JSON array with exactly 1 object:
-[{{"instruction":"...","response":"..."}}]
-
-Requirements:
-- Keep the instruction-response pair aligned to the topic.
-- Ensure response is detailed, accurate, and at least {MIN_RESPONSE_CHAR_LENGTH} characters.
-- Response must be a JSON string value.
-- Do not include markdown/code fences.
-
-Example to improve:
-{json.dumps(candidate)}
-
-Failure reason:
-{reason}
-"""
-        system = load_prompt(agent_type.value)
-        result = await run_agent_async(
-            system_prompt=system,
-            user_prompt=retry_prompt,
-            model=model,
-        )
-        repaired = parse_json_with_fallback(result)
-        if not isinstance(repaired, list) or len(repaired) < 1:
-            raise ValueError("Low-quality retry did not return a JSON array with one item")
-        item = repaired[0]
-        if not isinstance(item, dict) or "instruction" not in item or "response" not in item:
-            raise ValueError("Low-quality retry returned invalid item shape")
-        return item
-
-    async def _grade_entire_dataset(dataset_examples: list[dict]) -> tuple[float, str]:
-        if not dataset_examples:
-            return 0.0, "No accepted examples to grade at dataset level"
-        result = await run_agent_async(
-            system_prompt=load_prompt("grading"),
-            user_prompt=f"""
-Grade the ENTIRE dataset as a whole (not a single row) using the rubric.
+            user_prompt = f"""
+Grade this ENTIRE dataset in one pass and return row-level judgments.
 
 Metadata:
 - model: {model}
 - topic: {topic}
+- pass_tag: {tag}
 
-Dataset-level checks:
-- exact_item_count_20: {1 if len(dataset_examples) == 20 else 0}
-- duplicate_instruction: 0
+Input dataset JSON:
+{json.dumps(batch_examples)}
 
-Candidate item JSON:
-{json.dumps(dataset_examples)}
+Return ONLY this JSON object schema:
+{{
+  "model": "{model}",
+  "topic": "{topic}",
+  "dataset_score_0_10": 0.0,
+  "notes": "string",
+  "rows": [
+    {{"idx": 0, "score_0_10": 0.0, "accept": 0, "reason": "string"}}
+  ]
+}}
 
-Return exactly one JSON object using the required schema.
-No markdown. No extra text.
-""",
-        )
-        loaded = parse_json_with_fallback(result)
-        score = float(loaded.get("normalized_score_0_10", 0))
-        notes = str(loaded.get("notes", ""))
-        return score, notes
-
-    valid = []
-    invalid = []
-    audit_rows = []
-    failure_counts = {
-        "grading_json_parse_error": 0,
-        "low_score": 0,
-        "short_response": 0,
-        "exception": 0,
-        "accepted": 0,
-    }
-    with timer(label=TimedLabel.GRADING_CALL):
-        if len(examples) > 0:
-            length = 1 if len(examples) == 20 else 0
-            embeddings = await asyncio.gather(
-                *[asyncio.to_thread(get_embedding, ex["instruction"]) for ex in examples]
+Rules:
+- rows length must equal input dataset length.
+- idx must be 0-based and align to input order.
+- accept = 1 only when score_0_10 >= {MIN_GRADING_SCORE}.
+- No markdown. No extra keys outside schema.{retry_note}
+"""
+            result = await run_agent_async(
+                system_prompt=load_prompt("grading"),
+                user_prompt=user_prompt,
+                model=GRADING_MODEL,
+                label=TimedLabel.GRADING_CALL,
+                run_id=run_id,
+                dataset_key=dataset_key,
+                topic=topic,
+                stage=stage,
             )
-            for idx, ex in enumerate(examples):
-                candidate = ex
-                prior = embeddings[:idx]
-                is_dup = int(
-                    is_duplicate(new_embedding=embeddings[idx], existing_embeddings=prior)
+            try:
+                loaded = parse_json_with_fallback(result)
+                return loaded, retries, None
+            except json.JSONDecodeError as e:
+                last_error = e
+                retries += 1
+        return None, retries - 1, f"grading_batch_json_parse_error: {last_error}"
+
+    async def _regenerate_rejected_batch(rejected_rows: list[dict]) -> dict[int, dict]:
+        # Returns mapping {original_idx: regenerated_example}
+        prompt = f"""
+You will receive rejected training examples for topic "{topic}".
+Regenerate ONLY those examples and improve quality.
+
+Return ONLY a JSON array with this exact shape:
+[{{"original_idx": 3, "instruction": "...", "response": "..."}}]
+
+Rules:
+- Return exactly {len(rejected_rows)} items.
+- Keep each item aligned to its original_idx.
+- response must be a JSON string value.
+- No markdown/code fences.
+
+Rejected examples:
+{json.dumps(rejected_rows)}
+"""
+        result = await run_agent_async(
+            system_prompt=load_prompt(agent_type.value),
+            user_prompt=prompt,
+            model=model,
+            run_id=run_id,
+            dataset_key=dataset_key,
+            topic=topic,
+            stage="regeneration_batch",
+        )
+        parsed = parse_json_with_fallback(result)
+        if not isinstance(parsed, list):
+            raise ValueError("Regeneration batch did not return an array")
+        out: dict[int, dict] = {}
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            idx = item.get("original_idx")
+            if not isinstance(idx, int):
+                continue
+            if "instruction" not in item or "response" not in item:
+                continue
+            out[idx] = {
+                "instruction": str(item["instruction"]),
+                "response": str(item["response"]),
+            }
+        return out
+
+    def _evaluate_rows(batch_examples: list[dict], loaded: dict):
+        rows = loaded.get("rows", [])
+        if not isinstance(rows, list):
+            rows = []
+        row_map = {}
+        for row in rows:
+            if isinstance(row, dict) and isinstance(row.get("idx"), int):
+                row_map[row["idx"]] = row
+
+        accepted_local = []
+        rejected_local = []
+        for idx, ex in enumerate(batch_examples):
+            row = row_map.get(idx, {})
+            try:
+                row_score = float(row.get("score_0_10", 0))
+            except (TypeError, ValueError):
+                row_score = 0.0
+            accept_flag = int(row.get("accept", 0)) if isinstance(row, dict) else 0
+            reason = str(row.get("reason", "")) if isinstance(row, dict) else "missing_row"
+            short_response = len(str(ex.get("response", "")).strip()) < MIN_RESPONSE_CHAR_LENGTH
+            if accept_flag == 1 and row_score >= MIN_GRADING_SCORE and not short_response:
+                accepted_local.append(ex)
+            else:
+                rejected_local.append(
+                    {
+                        "idx": idx,
+                        "example": ex,
+                        "score": row_score,
+                        "reason": reason if reason else ("short_response" if short_response else "low_score"),
+                    }
                 )
-                low_quality_retries = 0
+        try:
+            dataset_score = float(loaded.get("dataset_score_0_10", 0))
+        except (TypeError, ValueError):
+            dataset_score = 0.0
+        notes = str(loaded.get("notes", ""))
+        return accepted_local, rejected_local, dataset_score, notes
 
-                try:
-                    while True:
-                        loaded, json_retries, parse_failure = await _grade_with_json_retries(
-                            candidate=candidate,
-                            duplicate_instruction=is_dup,
-                            length=length,
-                        )
-                        if parse_failure:
-                            failure_counts["grading_json_parse_error"] += 1
-                            invalid.append(candidate)
-                            audit_rows.append(
-                                {
-                                    "idx": idx,
-                                    "accepted": False,
-                                    "score": 0.0,
-                                    "reason": "grading_json_parse_error",
-                                    "json_retries": json_retries,
-                                    "low_quality_retries": low_quality_retries,
-                                    "instruction": candidate.get("instruction", ""),
-                                }
-                            )
-                            logger.saveToLog(
-                                f"[run_grading_agent] Could not parse grading output for idx={idx}: {parse_failure}",
-                                "ERROR",
-                            )
-                            break
+    if not examples:
+        logger.saveToLog("[run_grading_agent] No examples passed for grading", "ERROR")
+        return []
 
-                        score = float(loaded.get("normalized_score_0_10", 0))
-                        notes = str(loaded.get("notes", ""))
-                        response_text = str(candidate.get("response", "")).strip()
-                        too_short = len(response_text) < MIN_RESPONSE_CHAR_LENGTH
-                        low_score = score < MIN_GRADING_SCORE
+    with timer(label=TimedLabel.GRADING_CALL):
+        loaded, json_retries, parse_failure = await _grade_batch_with_json_retries(
+            examples, stage="grading_batch", tag="initial"
+        )
+    if parse_failure or not isinstance(loaded, dict):
+        logger.saveToLog(
+            f"[run_grading_agent] Initial batch grading parse failed after retries={json_retries}: {parse_failure}",
+            "ERROR",
+        )
+        saveScore(
+            "grading_dataset_score",
+            0.0,
+            metadata={
+                "topic": topic,
+                "model": model,
+                "grader_model": GRADING_MODEL,
+                "input_count": len(examples),
+                "accepted_count": 0,
+                "rejected_count": len(examples),
+                "notes": str(parse_failure),
+                "run_id": run_id,
+                "dataset_key": dataset_key,
+            },
+        )
+        return []
 
-                        if too_short or low_score:
-                            reasons = []
-                            if too_short:
-                                reasons.append("short_response")
-                            if low_score:
-                                reasons.append("low_score")
-                            reason_text = ",".join(reasons)
+    accepted, rejected, dataset_score, dataset_notes = _evaluate_rows(examples, loaded)
 
-                            if low_quality_retries < MAX_LOW_QUALITY_RETRIES:
-                                low_quality_retries += 1
-                                try:
-                                    candidate = await _regenerate_low_quality_example(
-                                        candidate, f"{reason_text}; notes={notes}"
-                                    )
-                                    continue
-                                except Exception as regen_e:
-                                    logger.saveToLog(
-                                        f"[run_grading_agent] Low-quality retry failed for idx={idx}: {regen_e}",
-                                        "ERROR",
-                                    )
+    # One regeneration pass for rejected items, then one re-grade pass.
+    if rejected:
+        rejected_payload = [
+            {
+                "original_idx": r["idx"],
+                "instruction": r["example"].get("instruction", ""),
+                "response": r["example"].get("response", ""),
+                "failure_reason": r["reason"],
+                "failure_score": r["score"],
+            }
+            for r in rejected
+        ]
+        try:
+            regenerated_map = await _regenerate_rejected_batch(rejected_payload)
+            regen_examples = []
+            regen_original_indices = []
+            for r in rejected:
+                idx = r["idx"]
+                if idx in regenerated_map:
+                    regen_examples.append(regenerated_map[idx])
+                    regen_original_indices.append(idx)
 
-                            if too_short:
-                                failure_counts["short_response"] += 1
-                            if low_score:
-                                failure_counts["low_score"] += 1
-                            invalid.append(candidate)
-                            audit_rows.append(
-                                {
-                                    "idx": idx,
-                                    "accepted": False,
-                                    "score": score,
-                                    "reason": reason_text,
-                                    "notes": notes,
-                                    "json_retries": json_retries,
-                                    "low_quality_retries": low_quality_retries,
-                                    "instruction": candidate.get("instruction", ""),
-                                }
-                            )
-                            logger.saveToLog(
-                                message=f"Grading agent rejected example {candidate} with reason: {notes}"
-                            )
-                            break
-
-                        valid.append(candidate)
-                        failure_counts["accepted"] += 1
-                        audit_rows.append(
-                            {
-                                "idx": idx,
-                                "accepted": True,
-                                "score": score,
-                                "reason": "",
-                                "notes": notes,
-                                "json_retries": json_retries,
-                                "low_quality_retries": low_quality_retries,
-                                "instruction": candidate.get("instruction", ""),
-                            }
-                        )
-                        break
-                except Exception as e:
-                    failure_counts["exception"] += 1
-                    invalid.append(candidate)
-                    audit_rows.append(
-                        {
-                            "idx": idx,
-                            "accepted": False,
-                            "score": 0.0,
-                            "reason": "exception",
-                            "notes": str(e),
-                            "json_retries": 0,
-                            "low_quality_retries": low_quality_retries,
-                            "instruction": candidate.get("instruction", ""),
-                        }
-                    )
+            if regen_examples:
+                loaded_regen, retries_regen, parse_fail_regen = await _grade_batch_with_json_retries(
+                    regen_examples, stage="grading_regeneration_batch", tag="regenerated"
+                )
+                if not parse_fail_regen and isinstance(loaded_regen, dict):
+                    regen_accepted, _, _, _ = _evaluate_rows(regen_examples, loaded_regen)
+                    # Map back accepted regenerated examples to original positions.
+                    for local_idx, ex in enumerate(regen_examples):
+                        if ex in regen_accepted:
+                            accepted.append(ex)
+                else:
                     logger.saveToLog(
-                        f"An error occurred when trying to grade example: {candidate}. See exception: {e}",
+                        f"[run_grading_agent] Regenerated batch grading parse failed retries={retries_regen}: {parse_fail_regen}",
                         "ERROR",
                     )
-                    continue
+        except Exception as e:
+            logger.saveToLog(f"[run_grading_agent] Regeneration batch failed: {e}", "ERROR")
 
-    _write_grading_audit(
-        {
-            "run_utc": datetime.now(timezone.utc).isoformat(),
-            "topic": topic,
-            "model": model,
-            "input_count": len(examples),
-            "accepted_count": len(valid),
-            "rejected_count": len(invalid),
-            "failure_counts": failure_counts,
-            "rows": audit_rows,
-        }
-    )
-    dataset_score = 0.0
-    dataset_notes = ""
-    try:
-        dataset_score, dataset_notes = await _grade_entire_dataset(valid)
-    except Exception as e:
-        logger.saveToLog(f"[run_grading_agent] Dataset-level grading failed: {e}", "ERROR")
-        dataset_score = 0.0
-        dataset_notes = f"dataset_level_grading_failed: {e}"
-
+    rejected_count = max(0, len(examples) - len(accepted))
     saveScore(
         "grading_dataset_score",
         dataset_score,
         metadata={
             "topic": topic,
             "model": model,
+            "grader_model": GRADING_MODEL,
             "input_count": len(examples),
-            "accepted_count": len(valid),
-            "rejected_count": len(invalid),
+            "accepted_count": len(accepted),
+            "rejected_count": rejected_count,
             "notes": dataset_notes,
+            "run_id": run_id,
+            "dataset_key": dataset_key,
         },
     )
-    if not valid:
+    logger.saveToLog(
+        f"[run_grading_agent] Batch summary generator_model={model} grader_model={GRADING_MODEL} topic={topic} input={len(examples)} accepted={len(accepted)} rejected={rejected_count} dataset_score={dataset_score}",
+        "INFO",
+    )
+    if not accepted:
         logger.saveToLog("[run_grading_agent] No examples passed grading", "ERROR")
-    return valid
+    return accepted
+

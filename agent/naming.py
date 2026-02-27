@@ -7,7 +7,14 @@ from .parsing import parse_json_with_fallback
 from .prompts import load_prompt
 
 
-async def run_naming_agent(examples: list[dict]):
+async def run_naming_agent(
+    examples: list[dict],
+    *,
+    run_id: str | None = None,
+    dataset_key: str | None = None,
+    topic: str | None = None,
+    model: str | None = None,
+):
     meta = None
     with timer(label=TimedLabel.NAMING_CALL):
         naming_prompt = f"""
@@ -20,7 +27,13 @@ async def run_naming_agent(examples: list[dict]):
         {json.dumps(examples)}
         """
         naming_result = await run_agent_async(
-            system_prompt=load_prompt("naming"), user_prompt=naming_prompt
+            system_prompt=load_prompt("naming"),
+            user_prompt=naming_prompt,
+            model=model,
+            run_id=run_id,
+            dataset_key=dataset_key,
+            topic=topic,
+            stage="naming",
         )
 
         try:

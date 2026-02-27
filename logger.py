@@ -8,7 +8,7 @@ os.makedirs("logs", exist_ok=True)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-handler = RotatingFileHandler(LOG_FILE, maxBytes=5_000_000, backupCount=3)
+handler = RotatingFileHandler(LOG_FILE, maxBytes=5_000_000, backupCount=3, encoding='utf-8')
 handler.setFormatter(logging.Formatter("%(asctime)s: %(message)s"))
 logger.addHandler(handler)
 

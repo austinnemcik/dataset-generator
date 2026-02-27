@@ -1,5 +1,5 @@
 from fastapi.responses import JSONResponse, FileResponse
-from fastapi import Depends, APIRouter
+from fastapi import Depends, APIRouter, Query
 from pydantic import BaseModel
 from datetime import datetime
 from sqlmodel import Session, select
@@ -8,7 +8,7 @@ from funkybob import RandomNameGenerator
 import json
 import tempfile
 import os
-from generics import response_builder, TimedLabel, timer
+from generics import response_builder, TimedLabel, timer, new_run_id
 from agent import (
     AgentType,
     run_naming_agent,
@@ -32,6 +32,10 @@ class IngestExamples(BaseModel):
     dataset_id: int
     dataset_description: str
     dataset_name: str
+    model: str | None = None
+    generation_cost: float | None = None
+    grading_cost: float | None = None
+    total_cost: float | None = None
 
 
 class Generation(BaseModel):
@@ -55,9 +59,21 @@ def ingest_example(body: IngestExamples, session: Session = Depends(get_session)
     try:
         dataset_name = body.dataset_name or str(RandomNameGenerator())
         dataset_description = body.dataset_description
+        dataset_model = body.model
+        generation_cost = float(body.generation_cost or 0.0)
+        grading_cost = float(body.grading_cost or 0.0)
+        total_cost = float(body.total_cost or 0.0)
         errors = 0
         example_amount = 0
-        dataset = Dataset(name=dataset_name, description=dataset_description, examples=[])
+        dataset = Dataset(
+            name=dataset_name,
+            description=dataset_description,
+            model=dataset_model,
+            generation_cost=generation_cost,
+            grading_cost=grading_cost,
+            total_cost=total_cost,
+            examples=[],
+        )
         existing_embeddings = []
         if not body.example:
             raise ValueError("No examples provided in ingest payload")
@@ -173,6 +189,10 @@ def all_datasets(dataset_amount: int, session: Session = Depends(get_session)):
                 {"name": dataset.name},
                 {"description": dataset.description},
                 {"id": dataset.id},
+                {"model": dataset.model},
+                {"generation_cost": dataset.generation_cost},
+                {"grading_cost": dataset.grading_cost},
+                {"total_cost": dataset.total_cost},
             ]
         }
         details.append(json.dumps(formatted))
@@ -187,6 +207,83 @@ def all_datasets(dataset_amount: int, session: Session = Depends(get_session)):
     )
 
 
+@data_router.get("/costs/summary")
+def cost_summary(
+    session: Session = Depends(get_session),
+    limit: int | None = Query(default=None, ge=1, le=10000),
+    model: str | None = Query(default=None),
+):
+    try:
+        stmt = select(Dataset).order_by(Dataset.id)
+        if model:
+            stmt = stmt.where(Dataset.model == model)
+        if limit:
+            stmt = stmt.limit(limit)
+        datasets = session.exec(stmt).all()
+        overall = {
+            "dataset_count": 0,
+            "generation_cost": 0.0,
+            "grading_cost": 0.0,
+            "total_cost": 0.0,
+        }
+        by_model: dict[str, dict] = {}
+        by_dataset: list[dict] = []
+
+        for ds in datasets:
+            model_key = ds.model or "unknown"
+            overall["dataset_count"] += 1
+            overall["generation_cost"] += float(ds.generation_cost or 0.0)
+            overall["grading_cost"] += float(ds.grading_cost or 0.0)
+            overall["total_cost"] += float(ds.total_cost or 0.0)
+
+            if model_key not in by_model:
+                by_model[model_key] = {
+                    "dataset_count": 0,
+                    "generation_cost": 0.0,
+                    "grading_cost": 0.0,
+                    "total_cost": 0.0,
+                }
+            by_model[model_key]["dataset_count"] += 1
+            by_model[model_key]["generation_cost"] += float(ds.generation_cost or 0.0)
+            by_model[model_key]["grading_cost"] += float(ds.grading_cost or 0.0)
+            by_model[model_key]["total_cost"] += float(ds.total_cost or 0.0)
+
+            by_dataset.append(
+                {
+                    "id": ds.id,
+                    "name": ds.name,
+                    "model": ds.model,
+                    "generation_cost": round(float(ds.generation_cost or 0.0), 8),
+                    "grading_cost": round(float(ds.grading_cost or 0.0), 8),
+                    "total_cost": round(float(ds.total_cost or 0.0), 8),
+                }
+            )
+
+        overall = {k: (round(v, 8) if isinstance(v, float) else v) for k, v in overall.items()}
+        for model_key, vals in by_model.items():
+            by_model[model_key] = {
+                k: (round(v, 8) if isinstance(v, float) else v) for k, v in vals.items()
+            }
+
+        return JSONResponse(
+            {
+                "success": True,
+                "message": "Successfully returned cost summary",
+                "filters": {"model": model, "limit": limit},
+                "overall": overall,
+                "by_model": by_model,
+                "by_dataset": by_dataset,
+            }
+        )
+    except Exception as e:
+        logger.saveToLog(f"[cost_summary] Unexpected error: {e}", "ERROR")
+        return response_builder(
+            success=False,
+            message="An error occurred while building cost summary.",
+            statusCode=500,
+        )
+
+
 @data_router.post("/generate")
 async def get_dataset(body: Generation):
     agent_type = body.agent_type
@@ -194,6 +291,8 @@ async def get_dataset(body: Generation):
     amount = body.amount
     source_material = body.source_material
     model = body.model
+    run_id = new_run_id()
+    dataset_key = topic
     try:
         if body.model:
             dataset, prompt = await generate_dataset(
@@ -202,6 +301,8 @@ async def get_dataset(body: Generation):
                 amt=amount,
                 source_material=source_material,
                 model=model,
+                run_id=run_id,
+                dataset_key=dataset_key,
             )
         else:
             dataset, prompt = await generate_dataset(
@@ -209,6 +310,8 @@ async def get_dataset(body: Generation):
                 topic=topic,
                 amt=amount,
                 source_material=source_material,
+                run_id=run_id,
+                dataset_key=dataset_key,
             )
         await save_responses(
             agent_type=agent_type,
@@ -218,6 +321,8 @@ async def get_dataset(body: Generation):
             model=model,
             amount=amount,
             source_material=source_material,
+            run_id=run_id,
+            dataset_key=dataset_key,
         )
         return response_builder(
             success=True, message="Successfully generated dataset", statusCode=201

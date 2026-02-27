@@ -1,4 +1,5 @@
 from .embeddings import cosine_similarity, get_embedding, is_duplicate
+from .automation import start_generation
 from .generation import generate_dataset
 from .grading import run_grading_agent
 from .naming import run_naming_agent
@@ -14,6 +15,7 @@ __all__ = [
     "generate_dataset",
     "get_embedding",
     "is_duplicate",
+    "start_generation",
     "run_grading_agent",
     "run_naming_agent",
     "save_responses",
