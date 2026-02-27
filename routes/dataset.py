@@ -58,8 +58,8 @@ def ingest_example(body: IngestExamples, session: Session = Depends(get_session)
     example_amount = 0
     dataset = Dataset(name=dataset_name, description=dataset_description, examples=[])
     existing_embeddings = []
-    with timer(label=TimedLabel.INGEST_REQUEST):
-        if body.example:
+    if body.example:
+        with timer(label=TimedLabel.INGEST_REQUEST):
             for ex in body.example:
                 prompt = body.prompt
                 instruction = ex.instruction
@@ -89,22 +89,22 @@ def ingest_example(body: IngestExamples, session: Session = Depends(get_session)
                     )
                 )
                 example_amount += 1
-            if len(dataset.examples) < 1:
-                return response_builder(
-                    success=False,
-                    message="No examples found!",
-                    errors=errors,
-                    statusCode=404,
-                )
-            session.add(dataset)
-            session.commit()
+        if len(dataset.examples) < 1:
             return response_builder(
-                success=True,
-                message="Dataset succesfully parsed and saved to databse.",
+                success=False,
+                message="No examples found!",
                 errors=errors,
-                count=example_amount,
-                statusCode=201,
+                statusCode=404,
             )
+        session.add(dataset)
+        session.commit()
+        return response_builder(
+            success=True,
+            message="Dataset succesfully parsed and saved to databse.",
+            errors=errors,
+            count=example_amount,
+            statusCode=201,
+        )
     return response_builder(
         success=False,
         message="An error occurred with the formatting of this example.",
@@ -191,7 +191,7 @@ async def get_dataset(body: Generation):
     else: 
         dataset, prompt = await generate_dataset(agent_type=agent_type, topic=topic, amt=amount, source_material=source_material)
     print("agent returned")
-    await save_responses(examples=dataset, prompt=prompt, topic=topic, model=model, amount=amount)
+    await save_responses(agent_type=agent_type, examples=dataset, prompt=prompt, topic=topic, model=model, amount=amount, source_material=source_material)
     return response_builder(
         success=True, message="Successfully generated dataset", statusCode=201
     )
