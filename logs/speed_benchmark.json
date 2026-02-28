@@ -1,0 +1,3702 @@
+{
+  "summary": {
+    "embedding_completion": {
+      "last_5": 0.005684960000507999,
+      "last_10": 0.005716080000274815,
+      "all_time": 0.005859013776997344
+    },
+    "ingest_api": {
+      "last_5": 1.2334304800009703,
+      "last_10": 1.1385844000004,
+      "all_time": 1.0812566000006751
+    },
+    "grading_completion": {
+      "last_5": 13.171011179999914,
+      "last_10": 13.982716799999617,
+      "all_time": 14.258445899999545
+    },
+    "api_cost": {
+      "usd_total": 0.78841485,
+      "tokens_total": 556469,
+      "by_model": {
+        "google/gemini-2.5-flash": {
+          "usd_total": 0.1580426,
+          "tokens_total": 217694,
+          "calls": 17
+        },
+        "z-ai/glm-5": {
+          "usd_total": 0.63037225,
+          "tokens_total": 338775,
+          "calls": 37
+        }
+      },
+      "by_dataset": {
+        "c03e450f-8a0d-4805-aee5-235adab2543e: mobile application vulnerability assessment techniques": {
+          "usd_total": 0.0118242,
+          "tokens_total": 16732,
+          "calls": 1
+        },
+        "fd81b6d7-ebb6-45e2-adc9-fa3c306f8d41: Code review and debugging": {
+          "usd_total": 0.0173892,
+          "tokens_total": 21360,
+          "calls": 2
+        },
+        "332f5fa6-93d0-499a-8e06-ea78778c3522: cryptographic implementation flaw detection": {
+          "usd_total": 0.0175056,
+          "tokens_total": 7072,
+          "calls": 2
+        },
+        "b60ba82f-2ec6-4425-8f95-dd1d27636959: container-orchestration-security-vulnerabilities": {
+          "usd_total": 0.039153,
+          "tokens_total": 27438,
+          "calls": 3
+        },
+        "6b92b6de-4daa-42ad-a695-6734b1dd9691: Code review and debugging": {
+          "usd_total": 0.0474088,
+          "tokens_total": 34291,
+          "calls": 3
+        },
+        "5e587d56-44fd-4bed-bcde-8f37966c10d8: supply-chain-dependency-vulnerabilities": {
+          "usd_total": 0.04374765,
+          "tokens_total": 32505,
+          "calls": 3
+        },
+        "d30aafae-bba8-44b9-bb44-15f01941fa03: session management vulnerability patterns": {
+          "usd_total": 0.0464184,
+          "tokens_total": 34068,
+          "calls": 5
+        },
+        "47a9e66d-0626-4bb6-a9f7-544c5c30c737: security-misconfiguration-vulnerability-detection": {
+          "usd_total": 0.0741097,
+          "tokens_total": 56631,
+          "calls": 3
+        },
+        "1ee7438d-7054-470f-b677-68f5bda844f2: deserialization-vulnerability-identification": {
+          "usd_total": 0.07258425,
+          "tokens_total": 55651,
+          "calls": 5
+        },
+        "02f35752-1160-4d29-b296-b581ce3b5499: IoT device firmware vulnerability analysis": {
+          "usd_total": 0.05318115,
+          "tokens_total": 21245,
+          "calls": 2
+        },
+        "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1: cloud infrastructure security misconfigurations": {
+          "usd_total": 0.07123695,
+          "tokens_total": 54546,
+          "calls": 5
+        },
+        "56bf977e-c67e-4d68-9cae-84ab67e6188d: api-security-vulnerability-identification": {
+          "usd_total": 0.03560965,
+          "tokens_total": 14139,
+          "calls": 2
+        },
+        "c5714181-4621-4a41-a1fb-66a4727298fc: authentication-authorization-vulnerability-detection": {
+          "usd_total": 0.04361065,
+          "tokens_total": 31956,
+          "calls": 4
+        },
+        "3ed64bb0-6e12-4451-a860-94ff39fbadf0: cloud-infrastructure-misconfiguration-vulnerabilities": {
+          "usd_total": 0.05791855,
+          "tokens_total": 43422,
+          "calls": 3
+        },
+        "d5d8b66c-dab1-4d3e-a206-0ce8f7255934: static-analysis-vulnerability-patterns": {
+          "usd_total": 0.03645545,
+          "tokens_total": 26352,
+          "calls": 3
+        },
+        "6ad90ed1-5301-4b14-879f-e009f040ca42: server-side-request-forgery-ssrf-vulnerabilities": {
+          "usd_total": 0.0305705,
+          "tokens_total": 12166,
+          "calls": 2
+        },
+        "90279f73-c6ed-45d2-801d-e550e8f78759: injection-attack-vulnerability-patterns": {
+          "usd_total": 0.04302145,
+          "tokens_total": 31926,
+          "calls": 3
+        },
+        "7a26b4e7-e7e7-441c-afaa-00373972856f: session-management-security-vulnerabilities": {
+          "usd_total": 0.0466697,
+          "tokens_total": 34969,
+          "calls": 3
+        }
+      }
+    },
+    "naming_completion": {
+      "last_5": 21.24382265999884,
+      "last_10": 17.3033428799994,
+      "all_time": 17.59029228749978
+    },
+    "chat_completion": {
+      "last_5": 355.796312640002,
+      "last_10": 375.11338094000166,
+      "all_time": 359.333410164706
+    },
+    "batch_generation": {
+      "last_5": 6252.702557199998,
+      "last_10": 6252.702557199998,
+      "all_time": 6252.702557199998
+    }
+  },
+  "rows": {
+    "api_cost": [
+      {
+        "timestamp": "2026-02-27T16:10:51.323988+00:00",
+        "run_id": "c03e450f-8a0d-4805-aee5-235adab2543e",
+        "dataset_key": "c03e450f-8a0d-4805-aee5-235adab2543e: mobile application vulnerability assessment techniques",
+        "topic": "mobile application vulnerability assessment techniques",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.0118242,
+        "prompt_tokens": 13639,
+        "completion_tokens": 3093,
+        "total_tokens": 16732
+      },
+      {
+        "timestamp": "2026-02-27T16:10:53.432218+00:00",
+        "run_id": "fd81b6d7-ebb6-45e2-adc9-fa3c306f8d41",
+        "dataset_key": "fd81b6d7-ebb6-45e2-adc9-fa3c306f8d41: Code review and debugging",
+        "topic": "Code review and debugging",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.009213200000000001,
+        "prompt_tokens": 9019,
+        "completion_tokens": 253,
+        "total_tokens": 9272
+      },
+      {
+        "timestamp": "2026-02-27T16:10:59.714015+00:00",
+        "run_id": "332f5fa6-93d0-499a-8e06-ea78778c3522",
+        "dataset_key": "332f5fa6-93d0-499a-8e06-ea78778c3522: cryptographic implementation flaw detection",
+        "topic": "cryptographic implementation flaw detection",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.017505600000000003,
+        "prompt_tokens": 330,
+        "completion_tokens": 6742,
+        "total_tokens": 7072
+      },
+      {
+        "timestamp": "2026-02-27T16:11:04.705091+00:00",
+        "run_id": "fd81b6d7-ebb6-45e2-adc9-fa3c306f8d41",
+        "dataset_key": "fd81b6d7-ebb6-45e2-adc9-fa3c306f8d41: Code review and debugging",
+        "topic": "Code review and debugging",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.008176,
+        "prompt_tokens": 10020,
+        "completion_tokens": 2068,
+        "total_tokens": 12088
+      },
+      {
+        "timestamp": "2026-02-27T16:11:05.368638+00:00",
+        "run_id": "332f5fa6-93d0-499a-8e06-ea78778c3522",
+        "dataset_key": "332f5fa6-93d0-499a-8e06-ea78778c3522: cryptographic implementation flaw detection",
+        "topic": "cryptographic implementation flaw detection",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      {
+        "timestamp": "2026-02-27T16:11:12.159067+00:00",
+        "run_id": "b60ba82f-2ec6-4425-8f95-dd1d27636959",
+        "dataset_key": "b60ba82f-2ec6-4425-8f95-dd1d27636959: container-orchestration-security-vulnerabilities",
+        "topic": "container-orchestration-security-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.0197276,
+        "prompt_tokens": 280,
+        "completion_tokens": 7632,
+        "total_tokens": 7912
+      },
+      {
+        "timestamp": "2026-02-27T16:11:32.438862+00:00",
+        "run_id": "b60ba82f-2ec6-4425-8f95-dd1d27636959",
+        "dataset_key": "b60ba82f-2ec6-4425-8f95-dd1d27636959: container-orchestration-security-vulnerabilities",
+        "topic": "container-orchestration-security-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.0092574,
+        "prompt_tokens": 7302,
+        "completion_tokens": 910,
+        "total_tokens": 8212
+      },
+      {
+        "timestamp": "2026-02-27T16:11:54.845480+00:00",
+        "run_id": "b60ba82f-2ec6-4425-8f95-dd1d27636959",
+        "dataset_key": "b60ba82f-2ec6-4425-8f95-dd1d27636959: container-orchestration-security-vulnerabilities",
+        "topic": "container-orchestration-security-vulnerabilities",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.010168,
+        "prompt_tokens": 8235,
+        "completion_tokens": 3079,
+        "total_tokens": 11314
+      },
+      {
+        "timestamp": "2026-02-27T16:12:42.060558+00:00",
+        "run_id": "6b92b6de-4daa-42ad-a695-6734b1dd9691",
+        "dataset_key": "6b92b6de-4daa-42ad-a695-6734b1dd9691: Code review and debugging",
+        "topic": "Code review and debugging",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.024797350000000003,
+        "prompt_tokens": 275,
+        "completion_tokens": 9622,
+        "total_tokens": 9897
+      },
+      {
+        "timestamp": "2026-02-27T16:12:51.955077+00:00",
+        "run_id": "6b92b6de-4daa-42ad-a695-6734b1dd9691",
+        "dataset_key": "6b92b6de-4daa-42ad-a695-6734b1dd9691: Code review and debugging",
+        "topic": "Code review and debugging",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.00991615,
+        "prompt_tokens": 9614,
+        "completion_tokens": 307,
+        "total_tokens": 9921
+      },
+      {
+        "timestamp": "2026-02-27T16:13:12.587494+00:00",
+        "run_id": "6b92b6de-4daa-42ad-a695-6734b1dd9691",
+        "dataset_key": "6b92b6de-4daa-42ad-a695-6734b1dd9691: Code review and debugging",
+        "topic": "Code review and debugging",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.012695300000000001,
+        "prompt_tokens": 10676,
+        "completion_tokens": 3797,
+        "total_tokens": 14473
+      },
+      {
+        "timestamp": "2026-02-27T16:13:35.370342+00:00",
+        "run_id": "5e587d56-44fd-4bed-bcde-8f37966c10d8",
+        "dataset_key": "5e587d56-44fd-4bed-bcde-8f37966c10d8: supply-chain-dependency-vulnerabilities",
+        "topic": "supply-chain-dependency-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.02487415,
+        "prompt_tokens": 278,
+        "completion_tokens": 9651,
+        "total_tokens": 9929
+      },
+      {
+        "timestamp": "2026-02-27T16:14:14.846818+00:00",
+        "run_id": "5e587d56-44fd-4bed-bcde-8f37966c10d8",
+        "dataset_key": "5e587d56-44fd-4bed-bcde-8f37966c10d8: supply-chain-dependency-vulnerabilities",
+        "topic": "supply-chain-dependency-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.0098419,
+        "prompt_tokens": 9560,
+        "completion_tokens": 298,
+        "total_tokens": 9858
+      },
+      {
+        "timestamp": "2026-02-27T16:14:18.285419+00:00",
+        "run_id": "d30aafae-bba8-44b9-bb44-15f01941fa03",
+        "dataset_key": "d30aafae-bba8-44b9-bb44-15f01941fa03: session management vulnerability patterns",
+        "topic": "session management vulnerability patterns",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.01753805,
+        "prompt_tokens": 289,
+        "completion_tokens": 6770,
+        "total_tokens": 7059
+      },
+      {
+        "timestamp": "2026-02-27T16:14:25.623053+00:00",
+        "run_id": "5e587d56-44fd-4bed-bcde-8f37966c10d8",
+        "dataset_key": "5e587d56-44fd-4bed-bcde-8f37966c10d8: supply-chain-dependency-vulnerabilities",
+        "topic": "supply-chain-dependency-vulnerabilities",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.0090316,
+        "prompt_tokens": 10347,
+        "completion_tokens": 2371,
+        "total_tokens": 12718
+      },
+      {
+        "timestamp": "2026-02-27T16:14:42.701802+00:00",
+        "run_id": "d30aafae-bba8-44b9-bb44-15f01941fa03",
+        "dataset_key": "d30aafae-bba8-44b9-bb44-15f01941fa03: session management vulnerability patterns",
+        "topic": "session management vulnerability patterns",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.00790165,
+        "prompt_tokens": 6809,
+        "completion_tokens": 562,
+        "total_tokens": 7371
+      },
+      {
+        "timestamp": "2026-02-27T16:14:58.069309+00:00",
+        "run_id": "d30aafae-bba8-44b9-bb44-15f01941fa03",
+        "dataset_key": "d30aafae-bba8-44b9-bb44-15f01941fa03: session management vulnerability patterns",
+        "topic": "session management vulnerability patterns",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.010016400000000002,
+        "prompt_tokens": 7988,
+        "completion_tokens": 3048,
+        "total_tokens": 11036
+      },
+      {
+        "timestamp": "2026-02-27T16:15:38.720559+00:00",
+        "run_id": "47a9e66d-0626-4bb6-a9f7-544c5c30c737",
+        "dataset_key": "47a9e66d-0626-4bb6-a9f7-544c5c30c737: security-misconfiguration-vulnerability-detection",
+        "topic": "security-misconfiguration-vulnerability-detection",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.04349870000000001,
+        "prompt_tokens": 280,
+        "completion_tokens": 16954,
+        "total_tokens": 17234
+      },
+      {
+        "timestamp": "2026-02-27T16:15:44.399279+00:00",
+        "run_id": "d30aafae-bba8-44b9-bb44-15f01941fa03",
+        "dataset_key": "d30aafae-bba8-44b9-bb44-15f01941fa03: session management vulnerability patterns",
+        "topic": "session management vulnerability patterns",
+        "model": "z-ai/glm-5",
+        "stage": "regeneration_batch",
+        "usd_total": 0.0080403,
+        "prompt_tokens": 2067,
+        "completion_tokens": 2383,
+        "total_tokens": 4450
+      },
+      {
+        "timestamp": "2026-02-27T16:15:48.028191+00:00",
+        "run_id": "d30aafae-bba8-44b9-bb44-15f01941fa03",
+        "dataset_key": "d30aafae-bba8-44b9-bb44-15f01941fa03: session management vulnerability patterns",
+        "topic": "session management vulnerability patterns",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_regeneration_batch",
+        "usd_total": 0.002922,
+        "prompt_tokens": 3390,
+        "completion_tokens": 762,
+        "total_tokens": 4152
+      },
+      {
+        "timestamp": "2026-02-27T16:15:56.718189+00:00",
+        "run_id": "47a9e66d-0626-4bb6-a9f7-544c5c30c737",
+        "dataset_key": "47a9e66d-0626-4bb6-a9f7-544c5c30c737: security-misconfiguration-vulnerability-detection",
+        "topic": "security-misconfiguration-vulnerability-detection",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.0166959,
+        "prompt_tokens": 16917,
+        "completion_tokens": 245,
+        "total_tokens": 17162
+      },
+      {
+        "timestamp": "2026-02-27T16:16:14.611710+00:00",
+        "run_id": "47a9e66d-0626-4bb6-a9f7-544c5c30c737",
+        "dataset_key": "47a9e66d-0626-4bb6-a9f7-544c5c30c737: security-misconfiguration-vulnerability-detection",
+        "topic": "security-misconfiguration-vulnerability-detection",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.0139151,
+        "prompt_tokens": 18942,
+        "completion_tokens": 3293,
+        "total_tokens": 22235
+      },
+      {
+        "timestamp": "2026-02-27T16:16:25.150230+00:00",
+        "run_id": "1ee7438d-7054-470f-b677-68f5bda844f2",
+        "dataset_key": "1ee7438d-7054-470f-b677-68f5bda844f2: deserialization-vulnerability-identification",
+        "topic": "deserialization-vulnerability-identification",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.04031185,
+        "prompt_tokens": 278,
+        "completion_tokens": 15705,
+        "total_tokens": 15983
+      },
+      {
+        "timestamp": "2026-02-27T16:16:35.694289+00:00",
+        "run_id": "1ee7438d-7054-470f-b677-68f5bda844f2",
+        "dataset_key": "1ee7438d-7054-470f-b677-68f5bda844f2: deserialization-vulnerability-identification",
+        "topic": "deserialization-vulnerability-identification",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.015705900000000002,
+        "prompt_tokens": 15738,
+        "completion_tokens": 296,
+        "total_tokens": 16034
+      },
+      {
+        "timestamp": "2026-02-27T16:16:36.991440+00:00",
+        "run_id": "02f35752-1160-4d29-b296-b581ce3b5499",
+        "dataset_key": "02f35752-1160-4d29-b296-b581ce3b5499: IoT device firmware vulnerability analysis",
+        "topic": "IoT device firmware vulnerability analysis",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.028794700000000003,
+        "prompt_tokens": 290,
+        "completion_tokens": 11184,
+        "total_tokens": 11474
+      },
+      {
+        "timestamp": "2026-02-27T16:16:50.606247+00:00",
+        "run_id": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1",
+        "dataset_key": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1: cloud infrastructure security misconfigurations",
+        "topic": "cloud infrastructure security misconfigurations",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.03160065,
+        "prompt_tokens": 291,
+        "completion_tokens": 12284,
+        "total_tokens": 12575
+      },
+      {
+        "timestamp": "2026-02-27T16:16:53.178133+00:00",
+        "run_id": "1ee7438d-7054-470f-b677-68f5bda844f2",
+        "dataset_key": "1ee7438d-7054-470f-b677-68f5bda844f2: deserialization-vulnerability-identification",
+        "topic": "deserialization-vulnerability-identification",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.0131952,
+        "prompt_tokens": 17159,
+        "completion_tokens": 3219,
+        "total_tokens": 20378
+      },
+      {
+        "timestamp": "2026-02-27T16:17:03.117001+00:00",
+        "run_id": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1",
+        "dataset_key": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1: cloud infrastructure security misconfigurations",
+        "topic": "cloud infrastructure security misconfigurations",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.01274105,
+        "prompt_tokens": 12346,
+        "completion_tokens": 397,
+        "total_tokens": 12743
+      },
+      {
+        "timestamp": "2026-02-27T16:17:07.244934+00:00",
+        "run_id": "1ee7438d-7054-470f-b677-68f5bda844f2",
+        "dataset_key": "1ee7438d-7054-470f-b677-68f5bda844f2: deserialization-vulnerability-identification",
+        "topic": "deserialization-vulnerability-identification",
+        "model": "z-ai/glm-5",
+        "stage": "regeneration_batch",
+        "usd_total": 0.0021751,
+        "prompt_tokens": 1028,
+        "completion_tokens": 470,
+        "total_tokens": 1498
+      },
+      {
+        "timestamp": "2026-02-27T16:17:09.113863+00:00",
+        "run_id": "1ee7438d-7054-470f-b677-68f5bda844f2",
+        "dataset_key": "1ee7438d-7054-470f-b677-68f5bda844f2: deserialization-vulnerability-identification",
+        "topic": "deserialization-vulnerability-identification",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_regeneration_batch",
+        "usd_total": 0.0011962000000000001,
+        "prompt_tokens": 1454,
+        "completion_tokens": 304,
+        "total_tokens": 1758
+      },
+      {
+        "timestamp": "2026-02-27T16:17:20.098659+00:00",
+        "run_id": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1",
+        "dataset_key": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1: cloud infrastructure security misconfigurations",
+        "topic": "cloud infrastructure security misconfigurations",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.011741600000000001,
+        "prompt_tokens": 14122,
+        "completion_tokens": 3002,
+        "total_tokens": 17124
+      },
+      {
+        "timestamp": "2026-02-27T16:18:21.646215+00:00",
+        "run_id": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1",
+        "dataset_key": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1: cloud infrastructure security misconfigurations",
+        "topic": "cloud infrastructure security misconfigurations",
+        "model": "z-ai/glm-5",
+        "stage": "regeneration_batch",
+        "usd_total": 0.01230375,
+        "prompt_tokens": 1989,
+        "completion_tokens": 4084,
+        "total_tokens": 6073
+      },
+      {
+        "timestamp": "2026-02-27T16:18:25.435338+00:00",
+        "run_id": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1",
+        "dataset_key": "2cae03c9-dd6a-4e01-b046-d497ab1ba5e1: cloud infrastructure security misconfigurations",
+        "topic": "cloud infrastructure security misconfigurations",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_regeneration_batch",
+        "usd_total": 0.0028499,
+        "prompt_tokens": 5558,
+        "completion_tokens": 473,
+        "total_tokens": 6031
+      },
+      {
+        "timestamp": "2026-02-27T16:20:05.378505+00:00",
+        "run_id": "56bf977e-c67e-4d68-9cae-84ab67e6188d",
+        "dataset_key": "56bf977e-c67e-4d68-9cae-84ab67e6188d: api-security-vulnerability-identification",
+        "topic": "api-security-vulnerability-identification",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.03560965000000001,
+        "prompt_tokens": 278,
+        "completion_tokens": 13861,
+        "total_tokens": 14139
+      },
+      {
+        "timestamp": "2026-02-27T16:20:11.367794+00:00",
+        "run_id": "56bf977e-c67e-4d68-9cae-84ab67e6188d",
+        "dataset_key": "56bf977e-c67e-4d68-9cae-84ab67e6188d: api-security-vulnerability-identification",
+        "topic": "api-security-vulnerability-identification",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      {
+        "timestamp": "2026-02-27T16:21:14.896917+00:00",
+        "run_id": "c5714181-4621-4a41-a1fb-66a4727298fc",
+        "dataset_key": "c5714181-4621-4a41-a1fb-66a4727298fc: authentication-authorization-vulnerability-detection",
+        "topic": "authentication-authorization-vulnerability-detection",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.0231768,
+        "prompt_tokens": 279,
+        "completion_tokens": 8985,
+        "total_tokens": 9264
+      },
+      {
+        "timestamp": "2026-02-27T16:21:34.677665+00:00",
+        "run_id": "c5714181-4621-4a41-a1fb-66a4727298fc",
+        "dataset_key": "c5714181-4621-4a41-a1fb-66a4727298fc: authentication-authorization-vulnerability-detection",
+        "topic": "authentication-authorization-vulnerability-detection",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.00996935,
+        "prompt_tokens": 9007,
+        "completion_tokens": 554,
+        "total_tokens": 9561
+      },
+      {
+        "timestamp": "2026-02-27T16:21:50.343230+00:00",
+        "run_id": "c5714181-4621-4a41-a1fb-66a4727298fc",
+        "dataset_key": "c5714181-4621-4a41-a1fb-66a4727298fc: authentication-authorization-vulnerability-detection",
+        "topic": "authentication-authorization-vulnerability-detection",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.0104645,
+        "prompt_tokens": 10165,
+        "completion_tokens": 2966,
+        "total_tokens": 13131
+      },
+      {
+        "timestamp": "2026-02-27T16:21:55.247016+00:00",
+        "run_id": "3ed64bb0-6e12-4451-a860-94ff39fbadf0",
+        "dataset_key": "3ed64bb0-6e12-4451-a860-94ff39fbadf0: cloud-infrastructure-misconfiguration-vulnerabilities",
+        "topic": "cloud-infrastructure-misconfiguration-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.033296150000000004,
+        "prompt_tokens": 280,
+        "completion_tokens": 12953,
+        "total_tokens": 13233
+      },
+      {
+        "timestamp": "2026-02-27T16:21:55.518281+00:00",
+        "run_id": "c5714181-4621-4a41-a1fb-66a4727298fc",
+        "dataset_key": "c5714181-4621-4a41-a1fb-66a4727298fc: authentication-authorization-vulnerability-detection",
+        "topic": "authentication-authorization-vulnerability-detection",
+        "model": "z-ai/glm-5",
+        "stage": "regeneration_batch",
+        "usd_total": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      {
+        "timestamp": "2026-02-27T16:22:20.102315+00:00",
+        "run_id": "02f35752-1160-4d29-b296-b581ce3b5499",
+        "dataset_key": "02f35752-1160-4d29-b296-b581ce3b5499: IoT device firmware vulnerability analysis",
+        "topic": "IoT device firmware vulnerability analysis",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.024386450000000004,
+        "prompt_tokens": 331,
+        "completion_tokens": 9440,
+        "total_tokens": 9771
+      },
+      {
+        "timestamp": "2026-02-27T16:22:55.812258+00:00",
+        "run_id": "3ed64bb0-6e12-4451-a860-94ff39fbadf0",
+        "dataset_key": "3ed64bb0-6e12-4451-a860-94ff39fbadf0: cloud-infrastructure-misconfiguration-vulnerabilities",
+        "topic": "cloud-infrastructure-misconfiguration-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.0135133,
+        "prompt_tokens": 12920,
+        "completion_tokens": 486,
+        "total_tokens": 13406
+      },
+      {
+        "timestamp": "2026-02-27T16:23:10.396698+00:00",
+        "run_id": "3ed64bb0-6e12-4451-a860-94ff39fbadf0",
+        "dataset_key": "3ed64bb0-6e12-4451-a860-94ff39fbadf0: cloud-infrastructure-misconfiguration-vulnerabilities",
+        "topic": "cloud-infrastructure-misconfiguration-vulnerabilities",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.0111091,
+        "prompt_tokens": 14022,
+        "completion_tokens": 2761,
+        "total_tokens": 16783
+      },
+      {
+        "timestamp": "2026-02-27T16:24:54.568753+00:00",
+        "run_id": "d5d8b66c-dab1-4d3e-a206-0ce8f7255934",
+        "dataset_key": "d5d8b66c-dab1-4d3e-a206-0ce8f7255934: static-analysis-vulnerability-patterns",
+        "topic": "static-analysis-vulnerability-patterns",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.01892755,
+        "prompt_tokens": 278,
+        "completion_tokens": 7319,
+        "total_tokens": 7597
+      },
+      {
+        "timestamp": "2026-02-27T16:25:04.897448+00:00",
+        "run_id": "6ad90ed1-5301-4b14-879f-e009f040ca42",
+        "dataset_key": "6ad90ed1-5301-4b14-879f-e009f040ca42: server-side-request-forgery-ssrf-vulnerabilities",
+        "topic": "server-side-request-forgery-ssrf-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.030570500000000004,
+        "prompt_tokens": 283,
+        "completion_tokens": 11883,
+        "total_tokens": 12166
+      },
+      {
+        "timestamp": "2026-02-27T16:25:10.304705+00:00",
+        "run_id": "6ad90ed1-5301-4b14-879f-e009f040ca42",
+        "dataset_key": "6ad90ed1-5301-4b14-879f-e009f040ca42: server-side-request-forgery-ssrf-vulnerabilities",
+        "topic": "server-side-request-forgery-ssrf-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      {
+        "timestamp": "2026-02-27T16:25:12.146248+00:00",
+        "run_id": "d5d8b66c-dab1-4d3e-a206-0ce8f7255934",
+        "dataset_key": "d5d8b66c-dab1-4d3e-a206-0ce8f7255934: static-analysis-vulnerability-patterns",
+        "topic": "static-analysis-vulnerability-patterns",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.008082,
+        "prompt_tokens": 7278,
+        "completion_tokens": 458,
+        "total_tokens": 7736
+      },
+      {
+        "timestamp": "2026-02-27T16:25:25.833431+00:00",
+        "run_id": "d5d8b66c-dab1-4d3e-a206-0ce8f7255934",
+        "dataset_key": "d5d8b66c-dab1-4d3e-a206-0ce8f7255934: static-analysis-vulnerability-patterns",
+        "topic": "static-analysis-vulnerability-patterns",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.0094459,
+        "prompt_tokens": 8228,
+        "completion_tokens": 2791,
+        "total_tokens": 11019
+      },
+      {
+        "timestamp": "2026-02-27T16:27:23.709642+00:00",
+        "run_id": "90279f73-c6ed-45d2-801d-e550e8f78759",
+        "dataset_key": "90279f73-c6ed-45d2-801d-e550e8f78759: injection-attack-vulnerability-patterns",
+        "topic": "injection-attack-vulnerability-patterns",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.0235746,
+        "prompt_tokens": 279,
+        "completion_tokens": 9141,
+        "total_tokens": 9420
+      },
+      {
+        "timestamp": "2026-02-27T16:27:37.448951+00:00",
+        "run_id": "90279f73-c6ed-45d2-801d-e550e8f78759",
+        "dataset_key": "90279f73-c6ed-45d2-801d-e550e8f78759: injection-attack-vulnerability-patterns",
+        "topic": "injection-attack-vulnerability-patterns",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.00991575,
+        "prompt_tokens": 9168,
+        "completion_tokens": 473,
+        "total_tokens": 9641
+      },
+      {
+        "timestamp": "2026-02-27T16:27:52.071941+00:00",
+        "run_id": "90279f73-c6ed-45d2-801d-e550e8f78759",
+        "dataset_key": "90279f73-c6ed-45d2-801d-e550e8f78759: injection-attack-vulnerability-patterns",
+        "topic": "injection-attack-vulnerability-patterns",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.0095311,
+        "prompt_tokens": 10287,
+        "completion_tokens": 2578,
+        "total_tokens": 12865
+      },
+      {
+        "timestamp": "2026-02-27T16:29:02.660442+00:00",
+        "run_id": "7a26b4e7-e7e7-441c-afaa-00373972856f",
+        "dataset_key": "7a26b4e7-e7e7-441c-afaa-00373972856f: session-management-security-vulnerabilities",
+        "topic": "session-management-security-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "generation",
+        "usd_total": 0.0265154,
+        "prompt_tokens": 277,
+        "completion_tokens": 10295,
+        "total_tokens": 10572
+      },
+      {
+        "timestamp": "2026-02-27T16:29:11.597543+00:00",
+        "run_id": "7a26b4e7-e7e7-441c-afaa-00373972856f",
+        "dataset_key": "7a26b4e7-e7e7-441c-afaa-00373972856f: session-management-security-vulnerabilities",
+        "topic": "session-management-security-vulnerabilities",
+        "model": "z-ai/glm-5",
+        "stage": "naming",
+        "usd_total": 0.0103938,
+        "prompt_tokens": 10302,
+        "completion_tokens": 238,
+        "total_tokens": 10540
+      },
+      {
+        "timestamp": "2026-02-27T16:29:23.155099+00:00",
+        "run_id": "7a26b4e7-e7e7-441c-afaa-00373972856f",
+        "dataset_key": "7a26b4e7-e7e7-441c-afaa-00373972856f: session-management-security-vulnerabilities",
+        "topic": "session-management-security-vulnerabilities",
+        "model": "google/gemini-2.5-flash",
+        "stage": "grading_batch",
+        "usd_total": 0.0097605,
+        "prompt_tokens": 11310,
+        "completion_tokens": 2547,
+        "total_tokens": 13857
+      }
+    ],
+    "grading_completion": [
+      {
+        "seconds": 13.588287400001718,
+        "timestamp": "2026-02-27T16:10:51.336987+00:00"
+      },
+      {
+        "seconds": 11.239805099998193,
+        "timestamp": "2026-02-27T16:11:04.694928+00:00"
+      },
+      {
+        "seconds": 11.263833500001056,
+        "timestamp": "2026-02-27T16:11:04.716091+00:00"
+      },
+      {
+        "seconds": 22.37012450000475,
+        "timestamp": "2026-02-27T16:11:54.834481+00:00"
+      },
+      {
+        "seconds": 22.397004400001606,
+        "timestamp": "2026-02-27T16:11:54.857989+00:00"
+      },
+      {
+        "seconds": 20.590551699999196,
+        "timestamp": "2026-02-27T16:13:12.574985+00:00"
+      },
+      {
+        "seconds": 20.619394599998486,
+        "timestamp": "2026-02-27T16:13:12.600494+00:00"
+      },
+      {
+        "seconds": 10.732345399999758,
+        "timestamp": "2026-02-27T16:14:25.609543+00:00"
+      },
+      {
+        "seconds": 10.76219979999587,
+        "timestamp": "2026-02-27T16:14:25.637051+00:00"
+      },
+      {
+        "seconds": 15.319260000003851,
+        "timestamp": "2026-02-27T16:14:58.054796+00:00"
+      },
+      {
+        "seconds": 15.352921899997455,
+        "timestamp": "2026-02-27T16:14:58.083308+00:00"
+      },
+      {
+        "seconds": 3.5956870000009076,
+        "timestamp": "2026-02-27T16:15:48.013191+00:00"
+      },
+      {
+        "seconds": 17.842020799995225,
+        "timestamp": "2026-02-27T16:16:14.594539+00:00"
+      },
+      {
+        "seconds": 17.87704179999855,
+        "timestamp": "2026-02-27T16:16:14.626215+00:00"
+      },
+      {
+        "seconds": 17.431653700004972,
+        "timestamp": "2026-02-27T16:16:53.161625+00:00"
+      },
+      {
+        "seconds": 17.466937599994708,
+        "timestamp": "2026-02-27T16:16:53.194022+00:00"
+      },
+      {
+        "seconds": 1.8324672999951872,
+        "timestamp": "2026-02-27T16:17:09.097357+00:00"
+      },
+      {
+        "seconds": 16.9275478999989,
+        "timestamp": "2026-02-27T16:17:20.081152+00:00"
+      },
+      {
+        "seconds": 16.96591559999797,
+        "timestamp": "2026-02-27T16:17:20.115659+00:00"
+      },
+      {
+        "seconds": 3.751209000001836,
+        "timestamp": "2026-02-27T16:18:25.418335+00:00"
+      },
+      {
+        "seconds": 15.606707999999344,
+        "timestamp": "2026-02-27T16:21:50.324723+00:00"
+      },
+      {
+        "seconds": 15.647966800002905,
+        "timestamp": "2026-02-27T16:21:50.361230+00:00"
+      },
+      {
+        "seconds": 14.525231399995391,
+        "timestamp": "2026-02-27T16:23:10.377698+00:00"
+      },
+      {
+        "seconds": 14.566188500000862,
+        "timestamp": "2026-02-27T16:23:10.416155+00:00"
+      },
+      {
+        "seconds": 13.62601739999809,
+        "timestamp": "2026-02-27T16:25:25.814428+00:00"
+      },
+      {
+        "seconds": 13.667903000001388,
+        "timestamp": "2026-02-27T16:25:25.852942+00:00"
+      },
+      {
+        "seconds": 14.557096299999102,
+        "timestamp": "2026-02-27T16:27:52.051432+00:00"
+      },
+      {
+        "seconds": 14.602065699997183,
+        "timestamp": "2026-02-27T16:27:52.091946+00:00"
+      },
+      {
+        "seconds": 11.490740000001097,
+        "timestamp": "2026-02-27T16:29:23.134093+00:00"
+      },
+      {
+        "seconds": 11.5372509000008,
+        "timestamp": "2026-02-27T16:29:23.177605+00:00"
+      }
+    ],
+    "embedding_completion": [
+      {
+        "seconds": 0.006453000001783948,
+        "timestamp": "2026-02-27T16:10:51.354989+00:00"
+      },
+      {
+        "seconds": 0.01076170000305865,
+        "timestamp": "2026-02-27T16:10:51.371991+00:00"
+      },
+      {
+        "seconds": 0.004901099993730895,
+        "timestamp": "2026-02-27T16:10:51.385988+00:00"
+      },
+      {
+        "seconds": 0.006073199998354539,
+        "timestamp": "2026-02-27T16:10:51.401988+00:00"
+      },
+      {
+        "seconds": 0.0047188999960781075,
+        "timestamp": "2026-02-27T16:10:51.415986+00:00"
+      },
+      {
+        "seconds": 0.005301299999700859,
+        "timestamp": "2026-02-27T16:10:51.430985+00:00"
+      },
+      {
+        "seconds": 0.0057916000005207025,
+        "timestamp": "2026-02-27T16:10:51.446988+00:00"
+      },
+      {
+        "seconds": 0.005916899994190317,
+        "timestamp": "2026-02-27T16:10:51.462988+00:00"
+      },
+      {
+        "seconds": 0.006081399995309766,
+        "timestamp": "2026-02-27T16:10:51.478986+00:00"
+      },
+      {
+        "seconds": 0.005941399998846464,
+        "timestamp": "2026-02-27T16:10:51.494986+00:00"
+      },
+      {
+        "seconds": 0.005940600000030827,
+        "timestamp": "2026-02-27T16:10:51.511986+00:00"
+      },
+      {
+        "seconds": 0.006118500001321081,
+        "timestamp": "2026-02-27T16:10:51.527986+00:00"
+      },
+      {
+        "seconds": 0.006139299999631476,
+        "timestamp": "2026-02-27T16:10:51.544987+00:00"
+      },
+      {
+        "seconds": 0.006212699998286553,
+        "timestamp": "2026-02-27T16:10:51.561986+00:00"
+      },
+      {
+        "seconds": 0.005001100005756598,
+        "timestamp": "2026-02-27T16:10:51.575988+00:00"
+      },
+      {
+        "seconds": 0.005720300003304146,
+        "timestamp": "2026-02-27T16:10:51.592495+00:00"
+      },
+      {
+        "seconds": 0.006862499998533167,
+        "timestamp": "2026-02-27T16:10:51.836739+00:00"
+      },
+      {
+        "seconds": 0.006028000003425404,
+        "timestamp": "2026-02-27T16:10:51.851740+00:00"
+      },
+      {
+        "seconds": 0.005965399999695364,
+        "timestamp": "2026-02-27T16:10:51.866740+00:00"
+      },
+      {
+        "seconds": 0.007187600000179373,
+        "timestamp": "2026-02-27T16:10:51.882744+00:00"
+      },
+      {
+        "seconds": 0.005200299994612578,
+        "timestamp": "2026-02-27T16:10:51.897739+00:00"
+      },
+      {
+        "seconds": 0.005754099998739548,
+        "timestamp": "2026-02-27T16:10:51.912739+00:00"
+      },
+      {
+        "seconds": 0.0059804999982588924,
+        "timestamp": "2026-02-27T16:10:51.927745+00:00"
+      },
+      {
+        "seconds": 0.005771900003310293,
+        "timestamp": "2026-02-27T16:10:51.942252+00:00"
+      },
+      {
+        "seconds": 0.0049956000002566725,
+        "timestamp": "2026-02-27T16:10:51.957252+00:00"
+      },
+      {
+        "seconds": 0.005881700002646539,
+        "timestamp": "2026-02-27T16:10:51.972255+00:00"
+      },
+      {
+        "seconds": 0.004997700001695193,
+        "timestamp": "2026-02-27T16:10:51.986769+00:00"
+      },
+      {
+        "seconds": 0.005375100001401734,
+        "timestamp": "2026-02-27T16:10:52.000770+00:00"
+      },
+      {
+        "seconds": 0.007083800002874341,
+        "timestamp": "2026-02-27T16:10:52.018400+00:00"
+      },
+      {
+        "seconds": 0.006203199998708442,
+        "timestamp": "2026-02-27T16:10:52.033401+00:00"
+      },
+      {
+        "seconds": 0.006177300005219877,
+        "timestamp": "2026-02-27T16:10:52.049400+00:00"
+      },
+      {
+        "seconds": 0.006136500000138767,
+        "timestamp": "2026-02-27T16:10:52.065403+00:00"
+      },
+      {
+        "seconds": 0.005851399997482076,
+        "timestamp": "2026-02-27T16:10:52.081910+00:00"
+      },
+      {
+        "seconds": 0.005877499999769498,
+        "timestamp": "2026-02-27T16:10:52.097915+00:00"
+      },
+      {
+        "seconds": 0.006032099998265039,
+        "timestamp": "2026-02-27T16:10:52.112915+00:00"
+      },
+      {
+        "seconds": 0.0058725000053527765,
+        "timestamp": "2026-02-27T16:10:52.128916+00:00"
+      },
+      {
+        "seconds": 0.006247600002097897,
+        "timestamp": "2026-02-27T16:10:52.144917+00:00"
+      },
+      {
+        "seconds": 0.00596130000485573,
+        "timestamp": "2026-02-27T16:10:52.160917+00:00"
+      },
+      {
+        "seconds": 0.005776099998911377,
+        "timestamp": "2026-02-27T16:10:52.176916+00:00"
+      },
+      {
+        "seconds": 0.005117000000609551,
+        "timestamp": "2026-02-27T16:10:52.190915+00:00"
+      },
+      {
+        "seconds": 0.005764900000940543,
+        "timestamp": "2026-02-27T16:10:52.206915+00:00"
+      },
+      {
+        "seconds": 0.004858299995248672,
+        "timestamp": "2026-02-27T16:10:52.220915+00:00"
+      },
+      {
+        "seconds": 0.005511900002602488,
+        "timestamp": "2026-02-27T16:10:52.235915+00:00"
+      },
+      {
+        "seconds": 0.005855099996551871,
+        "timestamp": "2026-02-27T16:10:52.251917+00:00"
+      },
+      {
+        "seconds": 0.00587939999968512,
+        "timestamp": "2026-02-27T16:10:52.267916+00:00"
+      },
+      {
+        "seconds": 0.005784599998150952,
+        "timestamp": "2026-02-27T16:10:52.283922+00:00"
+      },
+      {
+        "seconds": 0.00492340000346303,
+        "timestamp": "2026-02-27T16:10:52.298428+00:00"
+      },
+      {
+        "seconds": 0.005890299995371606,
+        "timestamp": "2026-02-27T16:10:52.315429+00:00"
+      },
+      {
+        "seconds": 0.0058869999993476085,
+        "timestamp": "2026-02-27T16:10:52.331431+00:00"
+      },
+      {
+        "seconds": 0.005901999997149687,
+        "timestamp": "2026-02-27T16:10:52.348938+00:00"
+      },
+      {
+        "seconds": 0.005764800000179093,
+        "timestamp": "2026-02-27T16:10:52.365940+00:00"
+      },
+      {
+        "seconds": 0.006067199996323325,
+        "timestamp": "2026-02-27T16:10:52.382938+00:00"
+      },
+      {
+        "seconds": 0.005905399993935134,
+        "timestamp": "2026-02-27T16:10:52.398938+00:00"
+      },
+      {
+        "seconds": 0.005954699998255819,
+        "timestamp": "2026-02-27T16:10:52.415939+00:00"
+      },
+      {
+        "seconds": 0.006135099996754434,
+        "timestamp": "2026-02-27T16:10:52.433939+00:00"
+      },
+      {
+        "seconds": 0.005968299999949522,
+        "timestamp": "2026-02-27T16:10:52.450940+00:00"
+      },
+      {
+        "seconds": 0.005906999998842366,
+        "timestamp": "2026-02-27T16:10:52.467939+00:00"
+      },
+      {
+        "seconds": 0.0059452999994391575,
+        "timestamp": "2026-02-27T16:10:52.484938+00:00"
+      },
+      {
+        "seconds": 0.006079600003431551,
+        "timestamp": "2026-02-27T16:10:52.501939+00:00"
+      },
+      {
+        "seconds": 0.0058682000017142855,
+        "timestamp": "2026-02-27T16:10:52.517939+00:00"
+      },
+      {
+        "seconds": 0.006041799999366049,
+        "timestamp": "2026-02-27T16:10:52.533939+00:00"
+      },
+      {
+        "seconds": 0.005880299999262206,
+        "timestamp": "2026-02-27T16:10:52.550939+00:00"
+      },
+      {
+        "seconds": 0.005899800002225675,
+        "timestamp": "2026-02-27T16:10:52.567939+00:00"
+      },
+      {
+        "seconds": 0.005922600001213141,
+        "timestamp": "2026-02-27T16:10:52.584940+00:00"
+      },
+      {
+        "seconds": 0.006208099999639671,
+        "timestamp": "2026-02-27T16:10:52.601940+00:00"
+      },
+      {
+        "seconds": 0.0049010000002454035,
+        "timestamp": "2026-02-27T16:10:52.617939+00:00"
+      },
+      {
+        "seconds": 0.005762900000263471,
+        "timestamp": "2026-02-27T16:10:52.634944+00:00"
+      },
+      {
+        "seconds": 0.006163500002003275,
+        "timestamp": "2026-02-27T16:10:52.651453+00:00"
+      },
+      {
+        "seconds": 0.00592490000417456,
+        "timestamp": "2026-02-27T16:10:52.668453+00:00"
+      },
+      {
+        "seconds": 0.005731800003559329,
+        "timestamp": "2026-02-27T16:10:52.685459+00:00"
+      },
+      {
+        "seconds": 0.007087899997713976,
+        "timestamp": "2026-02-27T16:11:05.200620+00:00"
+      },
+      {
+        "seconds": 0.004889499999990221,
+        "timestamp": "2026-02-27T16:11:05.218127+00:00"
+      },
+      {
+        "seconds": 0.0054168999995454215,
+        "timestamp": "2026-02-27T16:11:05.234127+00:00"
+      },
+      {
+        "seconds": 0.004828899996937253,
+        "timestamp": "2026-02-27T16:11:05.250130+00:00"
+      },
+      {
+        "seconds": 0.005363999996916391,
+        "timestamp": "2026-02-27T16:11:05.266642+00:00"
+      },
+      {
+        "seconds": 0.005913799999689218,
+        "timestamp": "2026-02-27T16:11:05.282638+00:00"
+      },
+      {
+        "seconds": 0.005932799998845439,
+        "timestamp": "2026-02-27T16:11:05.298638+00:00"
+      },
+      {
+        "seconds": 0.005980300004011951,
+        "timestamp": "2026-02-27T16:11:05.316639+00:00"
+      },
+      {
+        "seconds": 0.005954099993687123,
+        "timestamp": "2026-02-27T16:11:05.332638+00:00"
+      },
+      {
+        "seconds": 0.006118199999036733,
+        "timestamp": "2026-02-27T16:11:05.350638+00:00"
+      },
+      {
+        "seconds": 0.0061990999965928495,
+        "timestamp": "2026-02-27T16:11:05.387640+00:00"
+      },
+      {
+        "seconds": 0.005997799999022391,
+        "timestamp": "2026-02-27T16:11:05.405638+00:00"
+      },
+      {
+        "seconds": 0.005181000000447966,
+        "timestamp": "2026-02-27T16:11:05.421638+00:00"
+      },
+      {
+        "seconds": 0.006132599999546073,
+        "timestamp": "2026-02-27T16:11:05.439638+00:00"
+      },
+      {
+        "seconds": 0.004992299996956717,
+        "timestamp": "2026-02-27T16:11:05.455638+00:00"
+      },
+      {
+        "seconds": 0.00564930000109598,
+        "timestamp": "2026-02-27T16:11:05.472638+00:00"
+      },
+      {
+        "seconds": 0.004898200000752695,
+        "timestamp": "2026-02-27T16:11:05.488638+00:00"
+      },
+      {
+        "seconds": 0.005589300002611708,
+        "timestamp": "2026-02-27T16:11:05.505638+00:00"
+      },
+      {
+        "seconds": 0.004992199996195268,
+        "timestamp": "2026-02-27T16:11:05.522638+00:00"
+      },
+      {
+        "seconds": 0.005251700000371784,
+        "timestamp": "2026-02-27T16:11:05.539198+00:00"
+      },
+      {
+        "seconds": 0.004841599999053869,
+        "timestamp": "2026-02-27T16:11:05.555216+00:00"
+      },
+      {
+        "seconds": 0.0065440999969723634,
+        "timestamp": "2026-02-27T16:11:05.572722+00:00"
+      },
+      {
+        "seconds": 0.005516099998203572,
+        "timestamp": "2026-02-27T16:11:05.589722+00:00"
+      },
+      {
+        "seconds": 0.004873400001088157,
+        "timestamp": "2026-02-27T16:11:05.606726+00:00"
+      },
+      {
+        "seconds": 0.005280199999106117,
+        "timestamp": "2026-02-27T16:11:05.623234+00:00"
+      },
+      {
+        "seconds": 0.005000099998142105,
+        "timestamp": "2026-02-27T16:11:05.640111+00:00"
+      },
+      {
+        "seconds": 0.0053670999986934476,
+        "timestamp": "2026-02-27T16:11:05.657111+00:00"
+      },
+      {
+        "seconds": 0.005758400002378039,
+        "timestamp": "2026-02-27T16:11:05.674110+00:00"
+      },
+      {
+        "seconds": 0.005762600005255081,
+        "timestamp": "2026-02-27T16:11:05.691645+00:00"
+      },
+      {
+        "seconds": 0.005827400003909133,
+        "timestamp": "2026-02-27T16:11:05.709144+00:00"
+      },
+      {
+        "seconds": 0.005928699996729847,
+        "timestamp": "2026-02-27T16:11:05.727144+00:00"
+      },
+      {
+        "seconds": 0.005950799997663125,
+        "timestamp": "2026-02-27T16:11:05.744145+00:00"
+      },
+      {
+        "seconds": 0.005819999998493586,
+        "timestamp": "2026-02-27T16:11:05.761144+00:00"
+      },
+      {
+        "seconds": 0.004834300001675729,
+        "timestamp": "2026-02-27T16:11:05.778144+00:00"
+      },
+      {
+        "seconds": 0.005804299995361362,
+        "timestamp": "2026-02-27T16:11:05.795143+00:00"
+      },
+      {
+        "seconds": 0.005860500001290347,
+        "timestamp": "2026-02-27T16:11:05.813143+00:00"
+      },
+      {
+        "seconds": 0.005982099995890167,
+        "timestamp": "2026-02-27T16:11:05.831145+00:00"
+      },
+      {
+        "seconds": 0.00586240000120597,
+        "timestamp": "2026-02-27T16:11:05.848144+00:00"
+      },
+      {
+        "seconds": 0.00590599999850383,
+        "timestamp": "2026-02-27T16:11:05.866145+00:00"
+      },
+      {
+        "seconds": 0.0062067999970167875,
+        "timestamp": "2026-02-27T16:11:05.885143+00:00"
+      },
+      {
+        "seconds": 0.006069499999284744,
+        "timestamp": "2026-02-27T16:11:05.903145+00:00"
+      },
+      {
+        "seconds": 0.005312099994625896,
+        "timestamp": "2026-02-27T16:11:05.921148+00:00"
+      },
+      {
+        "seconds": 0.005987000004097354,
+        "timestamp": "2026-02-27T16:11:05.939663+00:00"
+      },
+      {
+        "seconds": 0.005742800000007264,
+        "timestamp": "2026-02-27T16:11:05.957657+00:00"
+      },
+      {
+        "seconds": 0.004995499999495223,
+        "timestamp": "2026-02-27T16:11:05.974658+00:00"
+      },
+      {
+        "seconds": 0.005937600006291177,
+        "timestamp": "2026-02-27T16:11:05.993168+00:00"
+      },
+      {
+        "seconds": 0.005956199995125644,
+        "timestamp": "2026-02-27T16:11:06.011466+00:00"
+      },
+      {
+        "seconds": 0.007383000003756024,
+        "timestamp": "2026-02-27T16:11:55.327912+00:00"
+      },
+      {
+        "seconds": 0.006061799998860806,
+        "timestamp": "2026-02-27T16:11:55.346913+00:00"
+      },
+      {
+        "seconds": 0.0060397000052034855,
+        "timestamp": "2026-02-27T16:11:55.365422+00:00"
+      },
+      {
+        "seconds": 0.0061377000020002015,
+        "timestamp": "2026-02-27T16:11:55.383422+00:00"
+      },
+      {
+        "seconds": 0.006908099996508099,
+        "timestamp": "2026-02-27T16:11:55.402426+00:00"
+      },
+      {
+        "seconds": 0.006342399996356107,
+        "timestamp": "2026-02-27T16:11:55.419942+00:00"
+      },
+      {
+        "seconds": 0.00493109999661101,
+        "timestamp": "2026-02-27T16:11:55.435938+00:00"
+      },
+      {
+        "seconds": 0.005487400005222298,
+        "timestamp": "2026-02-27T16:11:55.452940+00:00"
+      },
+      {
+        "seconds": 0.004848299999139272,
+        "timestamp": "2026-02-27T16:11:55.469938+00:00"
+      },
+      {
+        "seconds": 0.005929200000537094,
+        "timestamp": "2026-02-27T16:11:55.487938+00:00"
+      },
+      {
+        "seconds": 0.004792799998540431,
+        "timestamp": "2026-02-27T16:11:55.504938+00:00"
+      },
+      {
+        "seconds": 0.00539779999962775,
+        "timestamp": "2026-02-27T16:11:55.521941+00:00"
+      },
+      {
+        "seconds": 0.004828500001167413,
+        "timestamp": "2026-02-27T16:11:55.538941+00:00"
+      },
+      {
+        "seconds": 0.005344700002751779,
+        "timestamp": "2026-02-27T16:11:55.555941+00:00"
+      },
+      {
+        "seconds": 0.004973800001607742,
+        "timestamp": "2026-02-27T16:11:55.572938+00:00"
+      },
+      {
+        "seconds": 0.005807500005175825,
+        "timestamp": "2026-02-27T16:11:55.590938+00:00"
+      },
+      {
+        "seconds": 0.00565380000625737,
+        "timestamp": "2026-02-27T16:11:55.608938+00:00"
+      },
+      {
+        "seconds": 0.004919899998640176,
+        "timestamp": "2026-02-27T16:11:55.625941+00:00"
+      },
+      {
+        "seconds": 0.005992099999275524,
+        "timestamp": "2026-02-27T16:11:55.644938+00:00"
+      },
+      {
+        "seconds": 0.006067599999369122,
+        "timestamp": "2026-02-27T16:11:55.662938+00:00"
+      },
+      {
+        "seconds": 0.006198800001584459,
+        "timestamp": "2026-02-27T16:11:55.681939+00:00"
+      },
+      {
+        "seconds": 0.005945199998677708,
+        "timestamp": "2026-02-27T16:11:55.699945+00:00"
+      },
+      {
+        "seconds": 0.005837099997734185,
+        "timestamp": "2026-02-27T16:11:55.718458+00:00"
+      },
+      {
+        "seconds": 0.006126599997514859,
+        "timestamp": "2026-02-27T16:11:55.735966+00:00"
+      },
+      {
+        "seconds": 0.006479400006355718,
+        "timestamp": "2026-02-27T16:11:55.754967+00:00"
+      },
+      {
+        "seconds": 0.005086400000436697,
+        "timestamp": "2026-02-27T16:11:55.772548+00:00"
+      },
+      {
+        "seconds": 0.00615490000200225,
+        "timestamp": "2026-02-27T16:11:55.789555+00:00"
+      },
+      {
+        "seconds": 0.006003199996484909,
+        "timestamp": "2026-02-27T16:11:55.808553+00:00"
+      },
+      {
+        "seconds": 0.004963200000929646,
+        "timestamp": "2026-02-27T16:11:55.825553+00:00"
+      },
+      {
+        "seconds": 0.005910399995627813,
+        "timestamp": "2026-02-27T16:11:55.844554+00:00"
+      },
+      {
+        "seconds": 0.005953299994871486,
+        "timestamp": "2026-02-27T16:11:55.862554+00:00"
+      },
+      {
+        "seconds": 0.005960300004517194,
+        "timestamp": "2026-02-27T16:11:55.880552+00:00"
+      },
+      {
+        "seconds": 0.005889499996555969,
+        "timestamp": "2026-02-27T16:11:55.899554+00:00"
+      },
+      {
+        "seconds": 0.005917599999520462,
+        "timestamp": "2026-02-27T16:11:55.917556+00:00"
+      },
+      {
+        "seconds": 0.005932499996561091,
+        "timestamp": "2026-02-27T16:11:55.936553+00:00"
+      },
+      {
+        "seconds": 0.006268400000408292,
+        "timestamp": "2026-02-27T16:11:55.955553+00:00"
+      },
+      {
+        "seconds": 0.005118599998240825,
+        "timestamp": "2026-02-27T16:11:55.972552+00:00"
+      },
+      {
+        "seconds": 0.006061499996576458,
+        "timestamp": "2026-02-27T16:11:55.991553+00:00"
+      },
+      {
+        "seconds": 0.00495970000338275,
+        "timestamp": "2026-02-27T16:11:56.009554+00:00"
+      },
+      {
+        "seconds": 0.00588449999486329,
+        "timestamp": "2026-02-27T16:11:56.028554+00:00"
+      },
+      {
+        "seconds": 0.006124599996837787,
+        "timestamp": "2026-02-27T16:11:56.047555+00:00"
+      },
+      {
+        "seconds": 0.005959800000709947,
+        "timestamp": "2026-02-27T16:11:56.066561+00:00"
+      },
+      {
+        "seconds": 0.006047499999112915,
+        "timestamp": "2026-02-27T16:11:56.086064+00:00"
+      },
+      {
+        "seconds": 0.005985099996905774,
+        "timestamp": "2026-02-27T16:11:56.104062+00:00"
+      },
+      {
+        "seconds": 0.005137000000104308,
+        "timestamp": "2026-02-27T16:11:56.122065+00:00"
+      },
+      {
+        "seconds": 0.006197499998961575,
+        "timestamp": "2026-02-27T16:11:56.141575+00:00"
+      },
+      {
+        "seconds": 0.00593500000104541,
+        "timestamp": "2026-02-27T16:11:56.160574+00:00"
+      },
+      {
+        "seconds": 0.006023999994795304,
+        "timestamp": "2026-02-27T16:11:56.179574+00:00"
+      },
+      {
+        "seconds": 0.005868799999007024,
+        "timestamp": "2026-02-27T16:11:56.199577+00:00"
+      },
+      {
+        "seconds": 0.006204400000569876,
+        "timestamp": "2026-02-27T16:11:56.218575+00:00"
+      },
+      {
+        "seconds": 0.007224000000860542,
+        "timestamp": "2026-02-27T16:13:13.068733+00:00"
+      },
+      {
+        "seconds": 0.004866900002525654,
+        "timestamp": "2026-02-27T16:13:13.087736+00:00"
+      },
+      {
+        "seconds": 0.0052829000051133335,
+        "timestamp": "2026-02-27T16:13:13.106047+00:00"
+      },
+      {
+        "seconds": 0.005998699998599477,
+        "timestamp": "2026-02-27T16:13:13.125047+00:00"
+      },
+      {
+        "seconds": 0.007044300000416115,
+        "timestamp": "2026-02-27T16:13:13.144053+00:00"
+      },
+      {
+        "seconds": 0.006178100004035514,
+        "timestamp": "2026-02-27T16:13:13.163097+00:00"
+      },
+      {
+        "seconds": 0.006118399993283674,
+        "timestamp": "2026-02-27T16:13:13.182096+00:00"
+      },
+      {
+        "seconds": 0.0059881999986828305,
+        "timestamp": "2026-02-27T16:13:13.201096+00:00"
+      },
+      {
+        "seconds": 0.005036499998823274,
+        "timestamp": "2026-02-27T16:13:13.218366+00:00"
+      },
+      {
+        "seconds": 0.006081400002585724,
+        "timestamp": "2026-02-27T16:13:13.237473+00:00"
+      },
+      {
+        "seconds": 0.006444400001782924,
+        "timestamp": "2026-02-27T16:13:13.257479+00:00"
+      },
+      {
+        "seconds": 0.005990599995129742,
+        "timestamp": "2026-02-27T16:13:13.275480+00:00"
+      },
+      {
+        "seconds": 0.006235900000319816,
+        "timestamp": "2026-02-27T16:13:13.295479+00:00"
+      },
+      {
+        "seconds": 0.004988799999409821,
+        "timestamp": "2026-02-27T16:13:13.313479+00:00"
+      },
+      {
+        "seconds": 0.00594680000358494,
+        "timestamp": "2026-02-27T16:13:13.332479+00:00"
+      },
+      {
+        "seconds": 0.006092600000556558,
+        "timestamp": "2026-02-27T16:13:13.351479+00:00"
+      },
+      {
+        "seconds": 0.0053057000041007996,
+        "timestamp": "2026-02-27T16:13:13.369481+00:00"
+      },
+      {
+        "seconds": 0.006135299998277333,
+        "timestamp": "2026-02-27T16:13:13.389478+00:00"
+      },
+      {
+        "seconds": 0.004960499994922429,
+        "timestamp": "2026-02-27T16:13:13.407479+00:00"
+      },
+      {
+        "seconds": 0.005922899996221531,
+        "timestamp": "2026-02-27T16:13:13.427382+00:00"
+      },
+      {
+        "seconds": 0.005911100000957958,
+        "timestamp": "2026-02-27T16:13:13.447382+00:00"
+      },
+      {
+        "seconds": 0.005980100002489053,
+        "timestamp": "2026-02-27T16:13:13.465895+00:00"
+      },
+      {
+        "seconds": 0.006151499997940846,
+        "timestamp": "2026-02-27T16:13:13.485894+00:00"
+      },
+      {
+        "seconds": 0.005080399998405483,
+        "timestamp": "2026-02-27T16:13:13.503902+00:00"
+      },
+      {
+        "seconds": 0.005640700001094956,
+        "timestamp": "2026-02-27T16:13:13.523409+00:00"
+      },
+      {
+        "seconds": 0.005580500001087785,
+        "timestamp": "2026-02-27T16:13:13.542411+00:00"
+      },
+      {
+        "seconds": 0.005971099999442231,
+        "timestamp": "2026-02-27T16:13:13.561409+00:00"
+      },
+      {
+        "seconds": 0.005896299997402821,
+        "timestamp": "2026-02-27T16:13:13.581410+00:00"
+      },
+      {
+        "seconds": 0.006066900001314934,
+        "timestamp": "2026-02-27T16:13:13.601413+00:00"
+      },
+      {
+        "seconds": 0.005042600001615938,
+        "timestamp": "2026-02-27T16:13:13.619409+00:00"
+      },
+      {
+        "seconds": 0.005943600001046434,
+        "timestamp": "2026-02-27T16:13:13.639414+00:00"
+      },
+      {
+        "seconds": 0.005003700003726408,
+        "timestamp": "2026-02-27T16:13:13.658411+00:00"
+      },
+      {
+        "seconds": 0.004805299999134149,
+        "timestamp": "2026-02-27T16:13:13.677414+00:00"
+      },
+      {
+        "seconds": 0.006020000000717118,
+        "timestamp": "2026-02-27T16:13:13.697414+00:00"
+      },
+      {
+        "seconds": 0.004762100004882086,
+        "timestamp": "2026-02-27T16:13:13.714414+00:00"
+      },
+      {
+        "seconds": 0.006084399996325374,
+        "timestamp": "2026-02-27T16:13:13.734929+00:00"
+      },
+      {
+        "seconds": 0.005281300000206102,
+        "timestamp": "2026-02-27T16:13:13.752925+00:00"
+      },
+      {
+        "seconds": 0.005418200002168305,
+        "timestamp": "2026-02-27T16:13:13.771926+00:00"
+      },
+      {
+        "seconds": 0.0049260999949183315,
+        "timestamp": "2026-02-27T16:13:13.791927+00:00"
+      },
+      {
+        "seconds": 0.005881700002646539,
+        "timestamp": "2026-02-27T16:13:13.811929+00:00"
+      },
+      {
+        "seconds": 0.005925499994191341,
+        "timestamp": "2026-02-27T16:13:13.831437+00:00"
+      },
+      {
+        "seconds": 0.005919399998674635,
+        "timestamp": "2026-02-27T16:13:13.851437+00:00"
+      },
+      {
+        "seconds": 0.005055000001448207,
+        "timestamp": "2026-02-27T16:13:13.870441+00:00"
+      },
+      {
+        "seconds": 0.005718100001104176,
+        "timestamp": "2026-02-27T16:13:13.890947+00:00"
+      },
+      {
+        "seconds": 0.005847299995366484,
+        "timestamp": "2026-02-27T16:13:13.910947+00:00"
+      },
+      {
+        "seconds": 0.006017399995471351,
+        "timestamp": "2026-02-27T16:13:13.930947+00:00"
+      },
+      {
+        "seconds": 0.005963699994026683,
+        "timestamp": "2026-02-27T16:13:13.950948+00:00"
+      },
+      {
+        "seconds": 0.006080300001485739,
+        "timestamp": "2026-02-27T16:13:13.970948+00:00"
+      },
+      {
+        "seconds": 0.007022800004051533,
+        "timestamp": "2026-02-27T16:14:26.121249+00:00"
+      },
+      {
+        "seconds": 0.006241299997782335,
+        "timestamp": "2026-02-27T16:14:26.143757+00:00"
+      },
+      {
+        "seconds": 0.0049295999997411855,
+        "timestamp": "2026-02-27T16:14:26.162656+00:00"
+      },
+      {
+        "seconds": 0.005463900000904687,
+        "timestamp": "2026-02-27T16:14:26.181163+00:00"
+      },
+      {
+        "seconds": 0.006095099997764919,
+        "timestamp": "2026-02-27T16:14:26.202164+00:00"
+      },
+      {
+        "seconds": 0.006088300004194025,
+        "timestamp": "2026-02-27T16:14:26.222168+00:00"
+      },
+      {
+        "seconds": 0.006001299996569287,
+        "timestamp": "2026-02-27T16:14:26.242679+00:00"
+      },
+      {
+        "seconds": 0.006115100004535634,
+        "timestamp": "2026-02-27T16:14:26.262679+00:00"
+      },
+      {
+        "seconds": 0.004854600003454834,
+        "timestamp": "2026-02-27T16:14:26.281679+00:00"
+      },
+      {
+        "seconds": 0.0060790999996243045,
+        "timestamp": "2026-02-27T16:14:26.301678+00:00"
+      },
+      {
+        "seconds": 0.0061777000009897165,
+        "timestamp": "2026-02-27T16:14:26.322679+00:00"
+      },
+      {
+        "seconds": 0.006561499998497311,
+        "timestamp": "2026-02-27T16:14:26.342677+00:00"
+      },
+      {
+        "seconds": 0.006078699996578507,
+        "timestamp": "2026-02-27T16:14:26.362677+00:00"
+      },
+      {
+        "seconds": 0.005846300002303906,
+        "timestamp": "2026-02-27T16:14:26.382677+00:00"
+      },
+      {
+        "seconds": 0.006034899997757748,
+        "timestamp": "2026-02-27T16:14:26.403679+00:00"
+      },
+      {
+        "seconds": 0.006012700003338978,
+        "timestamp": "2026-02-27T16:14:26.423679+00:00"
+      },
+      {
+        "seconds": 0.0061190999986138195,
+        "timestamp": "2026-02-27T16:14:26.444678+00:00"
+      },
+      {
+        "seconds": 0.00523119999706978,
+        "timestamp": "2026-02-27T16:14:26.463679+00:00"
+      },
+      {
+        "seconds": 0.005987299999105744,
+        "timestamp": "2026-02-27T16:14:26.483678+00:00"
+      },
+      {
+        "seconds": 0.0060535999946296215,
+        "timestamp": "2026-02-27T16:14:26.503679+00:00"
+      },
+      {
+        "seconds": 0.006009100005030632,
+        "timestamp": "2026-02-27T16:14:26.523681+00:00"
+      },
+      {
+        "seconds": 0.006085999993956648,
+        "timestamp": "2026-02-27T16:14:26.544187+00:00"
+      },
+      {
+        "seconds": 0.005048899998655543,
+        "timestamp": "2026-02-27T16:14:26.564187+00:00"
+      },
+      {
+        "seconds": 0.005964600000879727,
+        "timestamp": "2026-02-27T16:14:26.583791+00:00"
+      },
+      {
+        "seconds": 0.005898100003832951,
+        "timestamp": "2026-02-27T16:14:26.604298+00:00"
+      },
+      {
+        "seconds": 0.005924000004597474,
+        "timestamp": "2026-02-27T16:14:26.625299+00:00"
+      },
+      {
+        "seconds": 0.006170900000142865,
+        "timestamp": "2026-02-27T16:14:26.645298+00:00"
+      },
+      {
+        "seconds": 0.0050216000017826445,
+        "timestamp": "2026-02-27T16:14:26.665299+00:00"
+      },
+      {
+        "seconds": 0.005844799998158123,
+        "timestamp": "2026-02-27T16:14:26.686300+00:00"
+      },
+      {
+        "seconds": 0.0060731000048690476,
+        "timestamp": "2026-02-27T16:14:26.706299+00:00"
+      },
+      {
+        "seconds": 0.0060604999962379225,
+        "timestamp": "2026-02-27T16:14:26.727302+00:00"
+      },
+      {
+        "seconds": 0.004978299999493174,
+        "timestamp": "2026-02-27T16:14:26.746812+00:00"
+      },
+      {
+        "seconds": 0.0058799000034923665,
+        "timestamp": "2026-02-27T16:14:26.767813+00:00"
+      },
+      {
+        "seconds": 0.005952699997578748,
+        "timestamp": "2026-02-27T16:14:26.788812+00:00"
+      },
+      {
+        "seconds": 0.005917700000281911,
+        "timestamp": "2026-02-27T16:14:26.808813+00:00"
+      },
+      {
+        "seconds": 0.006255400003283285,
+        "timestamp": "2026-02-27T16:14:26.829813+00:00"
+      },
+      {
+        "seconds": 0.004771300002175849,
+        "timestamp": "2026-02-27T16:14:26.848812+00:00"
+      },
+      {
+        "seconds": 0.006007800002407748,
+        "timestamp": "2026-02-27T16:14:26.870811+00:00"
+      },
+      {
+        "seconds": 0.006369300004735123,
+        "timestamp": "2026-02-27T16:14:26.891815+00:00"
+      },
+      {
+        "seconds": 0.0051012999974773265,
+        "timestamp": "2026-02-27T16:14:26.912323+00:00"
+      },
+      {
+        "seconds": 0.004591600001731422,
+        "timestamp": "2026-02-27T16:14:26.932328+00:00"
+      },
+      {
+        "seconds": 0.005788800001027994,
+        "timestamp": "2026-02-27T16:14:26.952833+00:00"
+      },
+      {
+        "seconds": 0.005715599996619858,
+        "timestamp": "2026-02-27T16:14:26.973835+00:00"
+      },
+      {
+        "seconds": 0.005205999994359445,
+        "timestamp": "2026-02-27T16:14:26.993833+00:00"
+      },
+      {
+        "seconds": 0.004701399993791711,
+        "timestamp": "2026-02-27T16:14:27.013836+00:00"
+      },
+      {
+        "seconds": 0.0056500999999116175,
+        "timestamp": "2026-02-27T16:14:27.034835+00:00"
+      },
+      {
+        "seconds": 0.0072326000008615665,
+        "timestamp": "2026-02-27T16:15:48.494536+00:00"
+      },
+      {
+        "seconds": 0.004982200000085868,
+        "timestamp": "2026-02-27T16:15:48.516048+00:00"
+      },
+      {
+        "seconds": 0.005757099999755155,
+        "timestamp": "2026-02-27T16:15:48.536049+00:00"
+      },
+      {
+        "seconds": 0.006120500001998153,
+        "timestamp": "2026-02-27T16:15:48.556558+00:00"
+      },
+      {
+        "seconds": 0.00609719999920344,
+        "timestamp": "2026-02-27T16:15:48.576557+00:00"
+      },
+      {
+        "seconds": 0.006340399995679036,
+        "timestamp": "2026-02-27T16:15:48.597557+00:00"
+      },
+      {
+        "seconds": 0.006289299999480136,
+        "timestamp": "2026-02-27T16:15:48.618558+00:00"
+      },
+      {
+        "seconds": 0.006285399998887442,
+        "timestamp": "2026-02-27T16:15:48.639557+00:00"
+      },
+      {
+        "seconds": 0.006194900000991765,
+        "timestamp": "2026-02-27T16:15:48.660559+00:00"
+      },
+      {
+        "seconds": 0.006089399998018052,
+        "timestamp": "2026-02-27T16:15:48.681558+00:00"
+      },
+      {
+        "seconds": 0.005971499995212071,
+        "timestamp": "2026-02-27T16:15:48.702560+00:00"
+      },
+      {
+        "seconds": 0.006259499998122919,
+        "timestamp": "2026-02-27T16:15:48.723561+00:00"
+      },
+      {
+        "seconds": 0.006102100000134669,
+        "timestamp": "2026-02-27T16:15:48.743565+00:00"
+      },
+      {
+        "seconds": 0.005938100002822466,
+        "timestamp": "2026-02-27T16:15:48.765073+00:00"
+      },
+      {
+        "seconds": 0.005383099996834062,
+        "timestamp": "2026-02-27T16:15:48.784069+00:00"
+      },
+      {
+        "seconds": 0.005893300003663171,
+        "timestamp": "2026-02-27T16:15:48.805072+00:00"
+      },
+      {
+        "seconds": 0.005922399999690242,
+        "timestamp": "2026-02-27T16:15:48.826076+00:00"
+      },
+      {
+        "seconds": 0.005995200001052581,
+        "timestamp": "2026-02-27T16:15:48.847082+00:00"
+      },
+      {
+        "seconds": 0.0050099000000045635,
+        "timestamp": "2026-02-27T16:15:48.867591+00:00"
+      },
+      {
+        "seconds": 0.005884500002139248,
+        "timestamp": "2026-02-27T16:15:48.888592+00:00"
+      },
+      {
+        "seconds": 0.0059779000002890825,
+        "timestamp": "2026-02-27T16:15:48.909099+00:00"
+      },
+      {
+        "seconds": 0.0059236000015516765,
+        "timestamp": "2026-02-27T16:15:48.930104+00:00"
+      },
+      {
+        "seconds": 0.004970300004060846,
+        "timestamp": "2026-02-27T16:15:48.951103+00:00"
+      },
+      {
+        "seconds": 0.0060577000040211715,
+        "timestamp": "2026-02-27T16:15:48.972107+00:00"
+      },
+      {
+        "seconds": 0.00493599999754224,
+        "timestamp": "2026-02-27T16:15:48.991105+00:00"
+      },
+      {
+        "seconds": 0.005914100001973566,
+        "timestamp": "2026-02-27T16:15:49.013105+00:00"
+      },
+      {
+        "seconds": 0.005210099996475037,
+        "timestamp": "2026-02-27T16:15:49.034103+00:00"
+      },
+      {
+        "seconds": 0.005805599997984245,
+        "timestamp": "2026-02-27T16:15:49.055103+00:00"
+      },
+      {
+        "seconds": 0.005282800004351884,
+        "timestamp": "2026-02-27T16:15:49.076104+00:00"
+      },
+      {
+        "seconds": 0.00591050000366522,
+        "timestamp": "2026-02-27T16:15:49.097103+00:00"
+      },
+      {
+        "seconds": 0.005068700003903359,
+        "timestamp": "2026-02-27T16:15:49.118106+00:00"
+      },
+      {
+        "seconds": 0.005864299993845634,
+        "timestamp": "2026-02-27T16:15:49.140107+00:00"
+      },
+      {
+        "seconds": 0.0061194000008981675,
+        "timestamp": "2026-02-27T16:15:49.161104+00:00"
+      },
+      {
+        "seconds": 0.006143500002508517,
+        "timestamp": "2026-02-27T16:15:49.183103+00:00"
+      },
+      {
+        "seconds": 0.0059412999980850145,
+        "timestamp": "2026-02-27T16:15:49.205107+00:00"
+      },
+      {
+        "seconds": 0.0067046999974991195,
+        "timestamp": "2026-02-27T16:15:49.228627+00:00"
+      },
+      {
+        "seconds": 0.006139299999631476,
+        "timestamp": "2026-02-27T16:15:49.250622+00:00"
+      },
+      {
+        "seconds": 0.005998900000122376,
+        "timestamp": "2026-02-27T16:15:49.271457+00:00"
+      },
+      {
+        "seconds": 0.005965199998172466,
+        "timestamp": "2026-02-27T16:15:49.293456+00:00"
+      },
+      {
+        "seconds": 0.005983300005027559,
+        "timestamp": "2026-02-27T16:15:49.315459+00:00"
+      },
+      {
+        "seconds": 0.005190199997741729,
+        "timestamp": "2026-02-27T16:15:49.337455+00:00"
+      },
+      {
+        "seconds": 0.006062399996153545,
+        "timestamp": "2026-02-27T16:15:49.360455+00:00"
+      },
+      {
+        "seconds": 0.00607529999979306,
+        "timestamp": "2026-02-27T16:15:49.382455+00:00"
+      },
+      {
+        "seconds": 0.005001999998057727,
+        "timestamp": "2026-02-27T16:15:49.403166+00:00"
+      },
+      {
+        "seconds": 0.006020200002240017,
+        "timestamp": "2026-02-27T16:15:49.424168+00:00"
+      },
+      {
+        "seconds": 0.005949300000793301,
+        "timestamp": "2026-02-27T16:15:49.446166+00:00"
+      },
+      {
+        "seconds": 0.0048349999997299165,
+        "timestamp": "2026-02-27T16:15:49.467166+00:00"
+      },
+      {
+        "seconds": 0.005900099997234065,
+        "timestamp": "2026-02-27T16:15:49.489166+00:00"
+      },
+      {
+        "seconds": 0.005934299995715264,
+        "timestamp": "2026-02-27T16:15:49.511166+00:00"
+      },
+      {
+        "seconds": 0.007280099998752121,
+        "timestamp": "2026-02-27T16:16:15.101778+00:00"
+      },
+      {
+        "seconds": 0.006255199994484428,
+        "timestamp": "2026-02-27T16:16:15.126655+00:00"
+      },
+      {
+        "seconds": 0.005000899996957742,
+        "timestamp": "2026-02-27T16:16:15.146654+00:00"
+      },
+      {
+        "seconds": 0.00572900000406662,
+        "timestamp": "2026-02-27T16:16:15.168164+00:00"
+      },
+      {
+        "seconds": 0.006028600000718143,
+        "timestamp": "2026-02-27T16:16:15.190168+00:00"
+      },
+      {
+        "seconds": 0.004896400001598522,
+        "timestamp": "2026-02-27T16:16:15.210168+00:00"
+      },
+      {
+        "seconds": 0.00588380000408506,
+        "timestamp": "2026-02-27T16:16:15.231168+00:00"
+      },
+      {
+        "seconds": 0.006061600004613865,
+        "timestamp": "2026-02-27T16:16:15.252169+00:00"
+      },
+      {
+        "seconds": 0.005924999997660052,
+        "timestamp": "2026-02-27T16:16:15.274313+00:00"
+      },
+      {
+        "seconds": 0.004975500000000466,
+        "timestamp": "2026-02-27T16:16:15.294314+00:00"
+      },
+      {
+        "seconds": 0.0059411000038380735,
+        "timestamp": "2026-02-27T16:16:15.316313+00:00"
+      },
+      {
+        "seconds": 0.005997100000968203,
+        "timestamp": "2026-02-27T16:16:15.338313+00:00"
+      },
+      {
+        "seconds": 0.006073500000638887,
+        "timestamp": "2026-02-27T16:16:15.359216+00:00"
+      },
+      {
+        "seconds": 0.005190900003071874,
+        "timestamp": "2026-02-27T16:16:15.381216+00:00"
+      },
+      {
+        "seconds": 0.0059738999989349395,
+        "timestamp": "2026-02-27T16:16:15.403218+00:00"
+      },
+      {
+        "seconds": 0.006104300002334639,
+        "timestamp": "2026-02-27T16:16:15.425221+00:00"
+      },
+      {
+        "seconds": 0.0050238999974681064,
+        "timestamp": "2026-02-27T16:16:15.446216+00:00"
+      },
+      {
+        "seconds": 0.0060974000007263385,
+        "timestamp": "2026-02-27T16:16:15.467216+00:00"
+      },
+      {
+        "seconds": 0.006758700001228135,
+        "timestamp": "2026-02-27T16:16:15.489725+00:00"
+      },
+      {
+        "seconds": 0.005154600003152154,
+        "timestamp": "2026-02-27T16:16:15.511725+00:00"
+      },
+      {
+        "seconds": 0.0059292999940225855,
+        "timestamp": "2026-02-27T16:16:15.533233+00:00"
+      },
+      {
+        "seconds": 0.005943500000284985,
+        "timestamp": "2026-02-27T16:16:15.555242+00:00"
+      },
+      {
+        "seconds": 0.005977200002234895,
+        "timestamp": "2026-02-27T16:16:15.577240+00:00"
+      },
+      {
+        "seconds": 0.005819699996209238,
+        "timestamp": "2026-02-27T16:16:15.599533+00:00"
+      },
+      {
+        "seconds": 0.005921399999351706,
+        "timestamp": "2026-02-27T16:16:15.621533+00:00"
+      },
+      {
+        "seconds": 0.006198900002345908,
+        "timestamp": "2026-02-27T16:16:15.643534+00:00"
+      },
+      {
+        "seconds": 0.005907999999180902,
+        "timestamp": "2026-02-27T16:16:15.665533+00:00"
+      },
+      {
+        "seconds": 0.005871500005014241,
+        "timestamp": "2026-02-27T16:16:15.687535+00:00"
+      },
+      {
+        "seconds": 0.005971799997496419,
+        "timestamp": "2026-02-27T16:16:15.709533+00:00"
+      },
+      {
+        "seconds": 0.004951999995682854,
+        "timestamp": "2026-02-27T16:16:15.730534+00:00"
+      },
+      {
+        "seconds": 0.005920199997490272,
+        "timestamp": "2026-02-27T16:16:15.751537+00:00"
+      },
+      {
+        "seconds": 0.005899399999179877,
+        "timestamp": "2026-02-27T16:16:15.775048+00:00"
+      },
+      {
+        "seconds": 0.00510750000103144,
+        "timestamp": "2026-02-27T16:16:15.797047+00:00"
+      },
+      {
+        "seconds": 0.005909899999096524,
+        "timestamp": "2026-02-27T16:16:15.819048+00:00"
+      },
+      {
+        "seconds": 0.0060395999971660785,
+        "timestamp": "2026-02-27T16:16:15.841560+00:00"
+      },
+      {
+        "seconds": 0.0049996000016108155,
+        "timestamp": "2026-02-27T16:16:15.862561+00:00"
+      },
+      {
+        "seconds": 0.005873599999176804,
+        "timestamp": "2026-02-27T16:16:15.884565+00:00"
+      },
+      {
+        "seconds": 0.0061338999948929995,
+        "timestamp": "2026-02-27T16:16:15.907075+00:00"
+      },
+      {
+        "seconds": 0.004917099999147467,
+        "timestamp": "2026-02-27T16:16:15.929075+00:00"
+      },
+      {
+        "seconds": 0.005862599995452911,
+        "timestamp": "2026-02-27T16:16:15.951075+00:00"
+      },
+      {
+        "seconds": 0.006189799998537637,
+        "timestamp": "2026-02-27T16:16:15.974075+00:00"
+      },
+      {
+        "seconds": 0.00523560000146972,
+        "timestamp": "2026-02-27T16:16:15.996075+00:00"
+      },
+      {
+        "seconds": 0.006016999999701511,
+        "timestamp": "2026-02-27T16:16:16.018076+00:00"
+      },
+      {
+        "seconds": 0.005933800006459933,
+        "timestamp": "2026-02-27T16:16:16.041074+00:00"
+      },
+      {
+        "seconds": 0.004998299998987932,
+        "timestamp": "2026-02-27T16:16:16.062075+00:00"
+      },
+      {
+        "seconds": 0.005892600005608983,
+        "timestamp": "2026-02-27T16:16:16.084074+00:00"
+      },
+      {
+        "seconds": 0.006032299999787938,
+        "timestamp": "2026-02-27T16:16:16.108075+00:00"
+      },
+      {
+        "seconds": 0.006089399998018052,
+        "timestamp": "2026-02-27T16:16:16.131075+00:00"
+      },
+      {
+        "seconds": 0.0050611000042408705,
+        "timestamp": "2026-02-27T16:16:16.152075+00:00"
+      },
+      {
+        "seconds": 0.005953700005193241,
+        "timestamp": "2026-02-27T16:16:16.175076+00:00"
+      },
+      {
+        "seconds": 0.007756699997116812,
+        "timestamp": "2026-02-27T16:17:09.574439+00:00"
+      },
+      {
+        "seconds": 0.006569400000444148,
+        "timestamp": "2026-02-27T16:17:09.601058+00:00"
+      },
+      {
+        "seconds": 0.005134400002134498,
+        "timestamp": "2026-02-27T16:17:09.622575+00:00"
+      },
+      {
+        "seconds": 0.006214799999725074,
+        "timestamp": "2026-02-27T16:17:09.645574+00:00"
+      },
+      {
+        "seconds": 0.007122399998479523,
+        "timestamp": "2026-02-27T16:17:09.669578+00:00"
+      },
+      {
+        "seconds": 0.006322200002614409,
+        "timestamp": "2026-02-27T16:17:09.694087+00:00"
+      },
+      {
+        "seconds": 0.006386000000929926,
+        "timestamp": "2026-02-27T16:17:09.717088+00:00"
+      },
+      {
+        "seconds": 0.0060970999984419905,
+        "timestamp": "2026-02-27T16:17:09.740089+00:00"
+      },
+      {
+        "seconds": 0.006961600003705826,
+        "timestamp": "2026-02-27T16:17:09.763091+00:00"
+      },
+      {
+        "seconds": 0.005536199998459779,
+        "timestamp": "2026-02-27T16:17:09.786598+00:00"
+      },
+      {
+        "seconds": 0.006347000002278946,
+        "timestamp": "2026-02-27T16:17:09.810598+00:00"
+      },
+      {
+        "seconds": 0.006637700003921054,
+        "timestamp": "2026-02-27T16:17:09.834599+00:00"
+      },
+      {
+        "seconds": 0.006161699995573144,
+        "timestamp": "2026-02-27T16:17:09.858597+00:00"
+      },
+      {
+        "seconds": 0.006545099997310899,
+        "timestamp": "2026-02-27T16:17:09.883598+00:00"
+      },
+      {
+        "seconds": 0.005113400002301205,
+        "timestamp": "2026-02-27T16:17:09.906598+00:00"
+      },
+      {
+        "seconds": 0.00617009999405127,
+        "timestamp": "2026-02-27T16:17:09.929599+00:00"
+      },
+      {
+        "seconds": 0.005807999994431157,
+        "timestamp": "2026-02-27T16:17:09.951599+00:00"
+      },
+      {
+        "seconds": 0.005858500000613276,
+        "timestamp": "2026-02-27T16:17:09.973604+00:00"
+      },
+      {
+        "seconds": 0.006003499998769257,
+        "timestamp": "2026-02-27T16:17:09.997112+00:00"
+      },
+      {
+        "seconds": 0.005013400004827417,
+        "timestamp": "2026-02-27T16:17:10.019115+00:00"
+      },
+      {
+        "seconds": 0.00600269999995362,
+        "timestamp": "2026-02-27T16:17:10.041628+00:00"
+      },
+      {
+        "seconds": 0.005156899998837616,
+        "timestamp": "2026-02-27T16:17:10.065046+00:00"
+      },
+      {
+        "seconds": 0.0052716999998665415,
+        "timestamp": "2026-02-27T16:17:10.087047+00:00"
+      },
+      {
+        "seconds": 0.005858500000613276,
+        "timestamp": "2026-02-27T16:17:10.109048+00:00"
+      },
+      {
+        "seconds": 0.0059844999996130355,
+        "timestamp": "2026-02-27T16:17:10.134047+00:00"
+      },
+      {
+        "seconds": 0.005051000000094064,
+        "timestamp": "2026-02-27T16:17:10.156048+00:00"
+      },
+      {
+        "seconds": 0.006001300003845245,
+        "timestamp": "2026-02-27T16:17:10.179048+00:00"
+      },
+      {
+        "seconds": 0.0059265000018058345,
+        "timestamp": "2026-02-27T16:17:10.202048+00:00"
+      },
+      {
+        "seconds": 0.0050315999978920445,
+        "timestamp": "2026-02-27T16:17:10.225048+00:00"
+      },
+      {
+        "seconds": 0.0058976000000257045,
+        "timestamp": "2026-02-27T16:17:10.248050+00:00"
+      },
+      {
+        "seconds": 0.005178499995963648,
+        "timestamp": "2026-02-27T16:17:10.270051+00:00"
+      },
+      {
+        "seconds": 0.005956399996648543,
+        "timestamp": "2026-02-27T16:17:10.294050+00:00"
+      },
+      {
+        "seconds": 0.006073700002161786,
+        "timestamp": "2026-02-27T16:17:10.317051+00:00"
+      },
+      {
+        "seconds": 0.005958900001132861,
+        "timestamp": "2026-02-27T16:17:10.340221+00:00"
+      },
+      {
+        "seconds": 0.006179899995913729,
+        "timestamp": "2026-02-27T16:17:10.363221+00:00"
+      },
+      {
+        "seconds": 0.00525519999791868,
+        "timestamp": "2026-02-27T16:17:10.386732+00:00"
+      },
+      {
+        "seconds": 0.005876900002476759,
+        "timestamp": "2026-02-27T16:17:10.409732+00:00"
+      },
+      {
+        "seconds": 0.0060904999991180375,
+        "timestamp": "2026-02-27T16:17:10.433732+00:00"
+      },
+      {
+        "seconds": 0.006025399998179637,
+        "timestamp": "2026-02-27T16:17:10.457732+00:00"
+      },
+      {
+        "seconds": 0.006158099997264799,
+        "timestamp": "2026-02-27T16:17:10.481732+00:00"
+      },
+      {
+        "seconds": 0.005153800004336517,
+        "timestamp": "2026-02-27T16:17:10.504732+00:00"
+      },
+      {
+        "seconds": 0.0059192999979131855,
+        "timestamp": "2026-02-27T16:17:10.528732+00:00"
+      },
+      {
+        "seconds": 0.006105200001911726,
+        "timestamp": "2026-02-27T16:17:10.551732+00:00"
+      },
+      {
+        "seconds": 0.005848499997227918,
+        "timestamp": "2026-02-27T16:17:10.575732+00:00"
+      },
+      {
+        "seconds": 0.006088699999963865,
+        "timestamp": "2026-02-27T16:17:10.599732+00:00"
+      },
+      {
+        "seconds": 0.005152700003236532,
+        "timestamp": "2026-02-27T16:17:10.622732+00:00"
+      },
+      {
+        "seconds": 0.00583349999942584,
+        "timestamp": "2026-02-27T16:17:10.645732+00:00"
+      },
+      {
+        "seconds": 0.005288700005621649,
+        "timestamp": "2026-02-27T16:17:10.668732+00:00"
+      },
+      {
+        "seconds": 0.005949200000031851,
+        "timestamp": "2026-02-27T16:17:10.692241+00:00"
+      },
+      {
+        "seconds": 0.00608720000309404,
+        "timestamp": "2026-02-27T16:17:10.717242+00:00"
+      },
+      {
+        "seconds": 0.006187799997860566,
+        "timestamp": "2026-02-27T16:17:10.741752+00:00"
+      },
+      {
+        "seconds": 0.005986700001813006,
+        "timestamp": "2026-02-27T16:17:10.765263+00:00"
+      },
+      {
+        "seconds": 0.00515080000332091,
+        "timestamp": "2026-02-27T16:17:10.788260+00:00"
+      },
+      {
+        "seconds": 0.007531899995228741,
+        "timestamp": "2026-02-27T16:18:25.908223+00:00"
+      },
+      {
+        "seconds": 0.004854600003454834,
+        "timestamp": "2026-02-27T16:18:25.933289+00:00"
+      },
+      {
+        "seconds": 0.0058903999961330555,
+        "timestamp": "2026-02-27T16:18:25.956294+00:00"
+      },
+      {
+        "seconds": 0.0060718999957316555,
+        "timestamp": "2026-02-27T16:18:25.979797+00:00"
+      },
+      {
+        "seconds": 0.006256699998630211,
+        "timestamp": "2026-02-27T16:18:26.003803+00:00"
+      },
+      {
+        "seconds": 0.006051399999705609,
+        "timestamp": "2026-02-27T16:18:26.027916+00:00"
+      },
+      {
+        "seconds": 0.00603199999750359,
+        "timestamp": "2026-02-27T16:18:26.051916+00:00"
+      },
+      {
+        "seconds": 0.00603449999471195,
+        "timestamp": "2026-02-27T16:18:26.074917+00:00"
+      },
+      {
+        "seconds": 0.0061491000014939345,
+        "timestamp": "2026-02-27T16:18:26.098916+00:00"
+      },
+      {
+        "seconds": 0.006145999999716878,
+        "timestamp": "2026-02-27T16:18:26.122917+00:00"
+      },
+      {
+        "seconds": 0.00747620000038296,
+        "timestamp": "2026-02-27T16:18:26.153915+00:00"
+      },
+      {
+        "seconds": 0.007831199996871874,
+        "timestamp": "2026-02-27T16:18:26.183916+00:00"
+      },
+      {
+        "seconds": 0.00808340000367025,
+        "timestamp": "2026-02-27T16:18:26.216916+00:00"
+      },
+      {
+        "seconds": 0.008322299996507354,
+        "timestamp": "2026-02-27T16:18:26.249916+00:00"
+      },
+      {
+        "seconds": 0.009367399994516745,
+        "timestamp": "2026-02-27T16:18:26.283916+00:00"
+      },
+      {
+        "seconds": 0.006658599995716941,
+        "timestamp": "2026-02-27T16:18:26.311920+00:00"
+      },
+      {
+        "seconds": 0.006145500003185589,
+        "timestamp": "2026-02-27T16:18:26.336428+00:00"
+      },
+      {
+        "seconds": 0.0061649999988731,
+        "timestamp": "2026-02-27T16:18:26.361430+00:00"
+      },
+      {
+        "seconds": 0.005312299996148795,
+        "timestamp": "2026-02-27T16:18:26.383941+00:00"
+      },
+      {
+        "seconds": 0.006157900003017858,
+        "timestamp": "2026-02-27T16:18:26.408942+00:00"
+      },
+      {
+        "seconds": 0.005690800004231278,
+        "timestamp": "2026-02-27T16:18:26.432940+00:00"
+      },
+      {
+        "seconds": 0.0056218000027001835,
+        "timestamp": "2026-02-27T16:18:26.456940+00:00"
+      },
+      {
+        "seconds": 0.006115799995313864,
+        "timestamp": "2026-02-27T16:18:26.480939+00:00"
+      },
+      {
+        "seconds": 0.0058577999952831306,
+        "timestamp": "2026-02-27T16:18:26.503941+00:00"
+      },
+      {
+        "seconds": 0.006482000004325528,
+        "timestamp": "2026-02-27T16:18:26.527940+00:00"
+      },
+      {
+        "seconds": 0.005165000002307352,
+        "timestamp": "2026-02-27T16:18:26.550940+00:00"
+      },
+      {
+        "seconds": 0.006245000004128087,
+        "timestamp": "2026-02-27T16:18:26.575942+00:00"
+      },
+      {
+        "seconds": 0.00586460000340594,
+        "timestamp": "2026-02-27T16:18:26.599941+00:00"
+      },
+      {
+        "seconds": 0.00603380000393372,
+        "timestamp": "2026-02-27T16:18:26.623942+00:00"
+      },
+      {
+        "seconds": 0.005739100000937469,
+        "timestamp": "2026-02-27T16:18:26.647941+00:00"
+      },
+      {
+        "seconds": 0.005294599999615457,
+        "timestamp": "2026-02-27T16:18:26.670947+00:00"
+      },
+      {
+        "seconds": 0.005985599993437063,
+        "timestamp": "2026-02-27T16:18:26.695453+00:00"
+      },
+      {
+        "seconds": 0.005323899997165427,
+        "timestamp": "2026-02-27T16:18:26.719454+00:00"
+      },
+      {
+        "seconds": 0.0061197000031825155,
+        "timestamp": "2026-02-27T16:18:26.743962+00:00"
+      },
+      {
+        "seconds": 0.005297499999869615,
+        "timestamp": "2026-02-27T16:18:26.766965+00:00"
+      },
+      {
+        "seconds": 0.006263099996431265,
+        "timestamp": "2026-02-27T16:18:26.791470+00:00"
+      },
+      {
+        "seconds": 0.005061199997726362,
+        "timestamp": "2026-02-27T16:18:26.814471+00:00"
+      },
+      {
+        "seconds": 0.006060100000468083,
+        "timestamp": "2026-02-27T16:18:26.838474+00:00"
+      },
+      {
+        "seconds": 0.006289800003287382,
+        "timestamp": "2026-02-27T16:18:26.863475+00:00"
+      },
+      {
+        "seconds": 0.006201700001838617,
+        "timestamp": "2026-02-27T16:18:26.889474+00:00"
+      },
+      {
+        "seconds": 0.00597090000519529,
+        "timestamp": "2026-02-27T16:18:26.914475+00:00"
+      },
+      {
+        "seconds": 0.005834099996718578,
+        "timestamp": "2026-02-27T16:18:26.939474+00:00"
+      },
+      {
+        "seconds": 0.00610640000377316,
+        "timestamp": "2026-02-27T16:18:26.963475+00:00"
+      },
+      {
+        "seconds": 0.005338800001482014,
+        "timestamp": "2026-02-27T16:18:26.987475+00:00"
+      },
+      {
+        "seconds": 0.00598570000147447,
+        "timestamp": "2026-02-27T16:18:27.012474+00:00"
+      },
+      {
+        "seconds": 0.007054599998809863,
+        "timestamp": "2026-02-27T16:21:56.001190+00:00"
+      },
+      {
+        "seconds": 0.0061190999986138195,
+        "timestamp": "2026-02-27T16:21:56.028700+00:00"
+      },
+      {
+        "seconds": 0.0051449999955366366,
+        "timestamp": "2026-02-27T16:21:56.051707+00:00"
+      },
+      {
+        "seconds": 0.005891500004508998,
+        "timestamp": "2026-02-27T16:21:56.076720+00:00"
+      },
+      {
+        "seconds": 0.005362500000046566,
+        "timestamp": "2026-02-27T16:21:56.100798+00:00"
+      },
+      {
+        "seconds": 0.006063900000299327,
+        "timestamp": "2026-02-27T16:21:56.125799+00:00"
+      },
+      {
+        "seconds": 0.0059515999964787625,
+        "timestamp": "2026-02-27T16:21:56.149800+00:00"
+      },
+      {
+        "seconds": 0.006042500004696194,
+        "timestamp": "2026-02-27T16:21:56.174797+00:00"
+      },
+      {
+        "seconds": 0.006048399998690002,
+        "timestamp": "2026-02-27T16:21:56.199796+00:00"
+      },
+      {
+        "seconds": 0.005978700006380677,
+        "timestamp": "2026-02-27T16:21:56.224795+00:00"
+      },
+      {
+        "seconds": 0.005800099999760278,
+        "timestamp": "2026-02-27T16:21:56.248795+00:00"
+      },
+      {
+        "seconds": 0.005808300003991462,
+        "timestamp": "2026-02-27T16:21:56.273813+00:00"
+      },
+      {
+        "seconds": 0.005085700002382509,
+        "timestamp": "2026-02-27T16:21:56.297798+00:00"
+      },
+      {
+        "seconds": 0.005914699999266304,
+        "timestamp": "2026-02-27T16:21:56.321799+00:00"
+      },
+      {
+        "seconds": 0.006059200000890996,
+        "timestamp": "2026-02-27T16:21:56.346799+00:00"
+      },
+      {
+        "seconds": 0.0054681000037817284,
+        "timestamp": "2026-02-27T16:21:56.370802+00:00"
+      },
+      {
+        "seconds": 0.005918700000620447,
+        "timestamp": "2026-02-27T16:21:56.395312+00:00"
+      },
+      {
+        "seconds": 0.0053521999943768606,
+        "timestamp": "2026-02-27T16:21:56.419313+00:00"
+      },
+      {
+        "seconds": 0.005907800004933961,
+        "timestamp": "2026-02-27T16:21:56.444824+00:00"
+      },
+      {
+        "seconds": 0.005233700001554098,
+        "timestamp": "2026-02-27T16:21:56.468824+00:00"
+      },
+      {
+        "seconds": 0.006006299998261966,
+        "timestamp": "2026-02-27T16:21:56.493824+00:00"
+      },
+      {
+        "seconds": 0.005014400005165953,
+        "timestamp": "2026-02-27T16:21:56.516823+00:00"
+      },
+      {
+        "seconds": 0.0059665000007953495,
+        "timestamp": "2026-02-27T16:21:56.541823+00:00"
+      },
+      {
+        "seconds": 0.0058280999946873635,
+        "timestamp": "2026-02-27T16:21:56.566825+00:00"
+      },
+      {
+        "seconds": 0.005787299996882211,
+        "timestamp": "2026-02-27T16:21:56.591824+00:00"
+      },
+      {
+        "seconds": 0.005782500003988389,
+        "timestamp": "2026-02-27T16:21:56.616824+00:00"
+      },
+      {
+        "seconds": 0.005366500001400709,
+        "timestamp": "2026-02-27T16:21:56.640823+00:00"
+      },
+      {
+        "seconds": 0.005646600002364721,
+        "timestamp": "2026-02-27T16:21:56.665821+00:00"
+      },
+      {
+        "seconds": 0.005438400003185961,
+        "timestamp": "2026-02-27T16:21:56.689822+00:00"
+      },
+      {
+        "seconds": 0.006407499997294508,
+        "timestamp": "2026-02-27T16:21:56.715822+00:00"
+      },
+      {
+        "seconds": 0.005513099997187965,
+        "timestamp": "2026-02-27T16:21:56.740342+00:00"
+      },
+      {
+        "seconds": 0.005749999996623956,
+        "timestamp": "2026-02-27T16:21:56.765339+00:00"
+      },
+      {
+        "seconds": 0.005739799998991657,
+        "timestamp": "2026-02-27T16:21:56.790854+00:00"
+      },
+      {
+        "seconds": 0.005849200002558064,
+        "timestamp": "2026-02-27T16:21:56.815856+00:00"
+      },
+      {
+        "seconds": 0.006182900004205294,
+        "timestamp": "2026-02-27T16:21:56.841150+00:00"
+      },
+      {
+        "seconds": 0.005921900003158953,
+        "timestamp": "2026-02-27T16:21:56.867154+00:00"
+      },
+      {
+        "seconds": 0.005518700003449339,
+        "timestamp": "2026-02-27T16:21:56.891153+00:00"
+      },
+      {
+        "seconds": 0.0057631999952718616,
+        "timestamp": "2026-02-27T16:21:56.916153+00:00"
+      },
+      {
+        "seconds": 0.00559159999829717,
+        "timestamp": "2026-02-27T16:21:56.941153+00:00"
+      },
+      {
+        "seconds": 0.005777999998826999,
+        "timestamp": "2026-02-27T16:21:56.967153+00:00"
+      },
+      {
+        "seconds": 0.005858699994860217,
+        "timestamp": "2026-02-27T16:21:56.992154+00:00"
+      },
+      {
+        "seconds": 0.005867799998668488,
+        "timestamp": "2026-02-27T16:21:57.018152+00:00"
+      },
+      {
+        "seconds": 0.006025399998179637,
+        "timestamp": "2026-02-27T16:21:57.044154+00:00"
+      },
+      {
+        "seconds": 0.005081800001789816,
+        "timestamp": "2026-02-27T16:21:57.068152+00:00"
+      },
+      {
+        "seconds": 0.007220200001029298,
+        "timestamp": "2026-02-27T16:25:26.343020+00:00"
+      },
+      {
+        "seconds": 0.006001699999615084,
+        "timestamp": "2026-02-27T16:25:26.370535+00:00"
+      },
+      {
+        "seconds": 0.005237000004854053,
+        "timestamp": "2026-02-27T16:25:26.395537+00:00"
+      },
+      {
+        "seconds": 0.005427500000223517,
+        "timestamp": "2026-02-27T16:25:26.421045+00:00"
+      },
+      {
+        "seconds": 0.006071000003430527,
+        "timestamp": "2026-02-27T16:25:26.446050+00:00"
+      },
+      {
+        "seconds": 0.0054432000033557415,
+        "timestamp": "2026-02-27T16:25:26.471049+00:00"
+      },
+      {
+        "seconds": 0.006135000003268942,
+        "timestamp": "2026-02-27T16:25:26.497049+00:00"
+      },
+      {
+        "seconds": 0.005670699996699113,
+        "timestamp": "2026-02-27T16:25:26.523048+00:00"
+      },
+      {
+        "seconds": 0.006088699999963865,
+        "timestamp": "2026-02-27T16:25:26.548997+00:00"
+      },
+      {
+        "seconds": 0.005546200001845136,
+        "timestamp": "2026-02-27T16:25:26.573997+00:00"
+      },
+      {
+        "seconds": 0.006001300003845245,
+        "timestamp": "2026-02-27T16:25:26.599997+00:00"
+      },
+      {
+        "seconds": 0.005844899998919573,
+        "timestamp": "2026-02-27T16:25:26.624997+00:00"
+      },
+      {
+        "seconds": 0.006040699998266064,
+        "timestamp": "2026-02-27T16:25:26.650997+00:00"
+      },
+      {
+        "seconds": 0.005743499998061452,
+        "timestamp": "2026-02-27T16:25:26.675998+00:00"
+      },
+      {
+        "seconds": 0.006186600003275089,
+        "timestamp": "2026-02-27T16:25:26.702001+00:00"
+      },
+      {
+        "seconds": 0.0058690000005299225,
+        "timestamp": "2026-02-27T16:25:26.728514+00:00"
+      },
+      {
+        "seconds": 0.006483999997726642,
+        "timestamp": "2026-02-27T16:25:26.754520+00:00"
+      },
+      {
+        "seconds": 0.006034999998519197,
+        "timestamp": "2026-02-27T16:25:26.780032+00:00"
+      },
+      {
+        "seconds": 0.005533700001251418,
+        "timestamp": "2026-02-27T16:25:26.806030+00:00"
+      },
+      {
+        "seconds": 0.006096899996919092,
+        "timestamp": "2026-02-27T16:25:26.832032+00:00"
+      },
+      {
+        "seconds": 0.005423899994639214,
+        "timestamp": "2026-02-27T16:25:26.857035+00:00"
+      },
+      {
+        "seconds": 0.005922399999690242,
+        "timestamp": "2026-02-27T16:25:26.882550+00:00"
+      },
+      {
+        "seconds": 0.005809700000099838,
+        "timestamp": "2026-02-27T16:25:26.908552+00:00"
+      },
+      {
+        "seconds": 0.005882899997232016,
+        "timestamp": "2026-02-27T16:25:26.934551+00:00"
+      },
+      {
+        "seconds": 0.006199499999638647,
+        "timestamp": "2026-02-27T16:25:26.961553+00:00"
+      },
+      {
+        "seconds": 0.005979400004434865,
+        "timestamp": "2026-02-27T16:25:26.987550+00:00"
+      },
+      {
+        "seconds": 0.005940700000792276,
+        "timestamp": "2026-02-27T16:25:27.013550+00:00"
+      },
+      {
+        "seconds": 0.005716200001188554,
+        "timestamp": "2026-02-27T16:25:27.039550+00:00"
+      },
+      {
+        "seconds": 0.006067700000130571,
+        "timestamp": "2026-02-27T16:25:27.065555+00:00"
+      },
+      {
+        "seconds": 0.0051877000005333684,
+        "timestamp": "2026-02-27T16:25:27.092071+00:00"
+      },
+      {
+        "seconds": 0.004726600003778003,
+        "timestamp": "2026-02-27T16:25:27.117581+00:00"
+      },
+      {
+        "seconds": 0.005238999998255167,
+        "timestamp": "2026-02-27T16:25:27.143589+00:00"
+      },
+      {
+        "seconds": 0.006194400004460476,
+        "timestamp": "2026-02-27T16:25:27.169588+00:00"
+      },
+      {
+        "seconds": 0.005540300000575371,
+        "timestamp": "2026-02-27T16:25:27.195587+00:00"
+      },
+      {
+        "seconds": 0.005064299999503419,
+        "timestamp": "2026-02-27T16:25:27.221588+00:00"
+      },
+      {
+        "seconds": 0.0059991000016452745,
+        "timestamp": "2026-02-27T16:25:27.247588+00:00"
+      },
+      {
+        "seconds": 0.005430600002000574,
+        "timestamp": "2026-02-27T16:25:27.273588+00:00"
+      },
+      {
+        "seconds": 0.005741399996622931,
+        "timestamp": "2026-02-27T16:25:27.300589+00:00"
+      },
+      {
+        "seconds": 0.0058279000004404224,
+        "timestamp": "2026-02-27T16:25:27.326588+00:00"
+      },
+      {
+        "seconds": 0.005971400001726579,
+        "timestamp": "2026-02-27T16:25:27.353588+00:00"
+      },
+      {
+        "seconds": 0.006119699995906558,
+        "timestamp": "2026-02-27T16:25:27.380589+00:00"
+      },
+      {
+        "seconds": 0.00533490000088932,
+        "timestamp": "2026-02-27T16:25:27.405587+00:00"
+      },
+      {
+        "seconds": 0.005931699997745454,
+        "timestamp": "2026-02-27T16:25:27.432100+00:00"
+      },
+      {
+        "seconds": 0.0058671000006143,
+        "timestamp": "2026-02-27T16:25:27.459099+00:00"
+      },
+      {
+        "seconds": 0.005826799999340437,
+        "timestamp": "2026-02-27T16:25:27.484612+00:00"
+      },
+      {
+        "seconds": 0.006024299997079652,
+        "timestamp": "2026-02-27T16:25:27.512612+00:00"
+      },
+      {
+        "seconds": 0.007384500000625849,
+        "timestamp": "2026-02-27T16:27:52.577864+00:00"
+      },
+      {
+        "seconds": 0.005338099996151868,
+        "timestamp": "2026-02-27T16:27:52.606864+00:00"
+      },
+      {
+        "seconds": 0.00630789999559056,
+        "timestamp": "2026-02-27T16:27:52.633865+00:00"
+      },
+      {
+        "seconds": 0.006324499998299871,
+        "timestamp": "2026-02-27T16:27:52.662864+00:00"
+      },
+      {
+        "seconds": 0.007168599993747193,
+        "timestamp": "2026-02-27T16:27:52.694866+00:00"
+      },
+      {
+        "seconds": 0.008616799997980706,
+        "timestamp": "2026-02-27T16:27:52.733864+00:00"
+      },
+      {
+        "seconds": 0.007172899997385684,
+        "timestamp": "2026-02-27T16:27:52.771870+00:00"
+      },
+      {
+        "seconds": 0.006374399999913294,
+        "timestamp": "2026-02-27T16:27:52.806377+00:00"
+      },
+      {
+        "seconds": 0.006917699996847659,
+        "timestamp": "2026-02-27T16:27:52.838885+00:00"
+      },
+      {
+        "seconds": 0.006301599998550955,
+        "timestamp": "2026-02-27T16:27:52.868885+00:00"
+      },
+      {
+        "seconds": 0.006059400002413895,
+        "timestamp": "2026-02-27T16:27:52.896016+00:00"
+      },
+      {
+        "seconds": 0.006004700000630692,
+        "timestamp": "2026-02-27T16:27:52.923015+00:00"
+      },
+      {
+        "seconds": 0.006150500004878268,
+        "timestamp": "2026-02-27T16:27:52.950016+00:00"
+      },
+      {
+        "seconds": 0.005927400001382921,
+        "timestamp": "2026-02-27T16:27:52.978016+00:00"
+      },
+      {
+        "seconds": 0.0059987999993609264,
+        "timestamp": "2026-02-27T16:27:53.004015+00:00"
+      },
+      {
+        "seconds": 0.006254400002944749,
+        "timestamp": "2026-02-27T16:27:53.032016+00:00"
+      },
+      {
+        "seconds": 0.005459100000734907,
+        "timestamp": "2026-02-27T16:27:53.059018+00:00"
+      },
+      {
+        "seconds": 0.005837700002302881,
+        "timestamp": "2026-02-27T16:27:53.085015+00:00"
+      },
+      {
+        "seconds": 0.006073299999115989,
+        "timestamp": "2026-02-27T16:27:53.112016+00:00"
+      },
+      {
+        "seconds": 0.005188799994357396,
+        "timestamp": "2026-02-27T16:27:53.138525+00:00"
+      },
+      {
+        "seconds": 0.005953700005193241,
+        "timestamp": "2026-02-27T16:27:53.164528+00:00"
+      },
+      {
+        "seconds": 0.005975699998089112,
+        "timestamp": "2026-02-27T16:27:53.192040+00:00"
+      },
+      {
+        "seconds": 0.004790700004377868,
+        "timestamp": "2026-02-27T16:27:53.217949+00:00"
+      },
+      {
+        "seconds": 0.005246699998679105,
+        "timestamp": "2026-02-27T16:27:53.243950+00:00"
+      },
+      {
+        "seconds": 0.006278499997279141,
+        "timestamp": "2026-02-27T16:27:53.271950+00:00"
+      },
+      {
+        "seconds": 0.005536200005735736,
+        "timestamp": "2026-02-27T16:27:53.298950+00:00"
+      },
+      {
+        "seconds": 0.005229799993685447,
+        "timestamp": "2026-02-27T16:27:53.325950+00:00"
+      },
+      {
+        "seconds": 0.005915099995036144,
+        "timestamp": "2026-02-27T16:27:53.352950+00:00"
+      },
+      {
+        "seconds": 0.005782100000942592,
+        "timestamp": "2026-02-27T16:27:53.379950+00:00"
+      },
+      {
+        "seconds": 0.0059338999999454245,
+        "timestamp": "2026-02-27T16:27:53.406950+00:00"
+      },
+      {
+        "seconds": 0.006107399996835738,
+        "timestamp": "2026-02-27T16:27:53.435096+00:00"
+      },
+      {
+        "seconds": 0.005967400000372436,
+        "timestamp": "2026-02-27T16:27:53.462096+00:00"
+      },
+      {
+        "seconds": 0.005969999998342246,
+        "timestamp": "2026-02-27T16:27:53.489603+00:00"
+      },
+      {
+        "seconds": 0.0059486999962246045,
+        "timestamp": "2026-02-27T16:27:53.516608+00:00"
+      },
+      {
+        "seconds": 0.005877900002815295,
+        "timestamp": "2026-02-27T16:27:53.544120+00:00"
+      },
+      {
+        "seconds": 0.005727799994929228,
+        "timestamp": "2026-02-27T16:27:53.570121+00:00"
+      },
+      {
+        "seconds": 0.005807599998661317,
+        "timestamp": "2026-02-27T16:27:53.598120+00:00"
+      },
+      {
+        "seconds": 0.005879199998162221,
+        "timestamp": "2026-02-27T16:27:53.625120+00:00"
+      },
+      {
+        "seconds": 0.005801799998153001,
+        "timestamp": "2026-02-27T16:27:53.653120+00:00"
+      },
+      {
+        "seconds": 0.005876700000953861,
+        "timestamp": "2026-02-27T16:27:53.681120+00:00"
+      },
+      {
+        "seconds": 0.00595420000172453,
+        "timestamp": "2026-02-27T16:27:53.708120+00:00"
+      },
+      {
+        "seconds": 0.006061500003852416,
+        "timestamp": "2026-02-27T16:27:53.735621+00:00"
+      },
+      {
+        "seconds": 0.005939000002399553,
+        "timestamp": "2026-02-27T16:27:53.762621+00:00"
+      },
+      {
+        "seconds": 0.006030700002156664,
+        "timestamp": "2026-02-27T16:27:53.790621+00:00"
+      },
+      {
+        "seconds": 0.006156200004625134,
+        "timestamp": "2026-02-27T16:27:53.817621+00:00"
+      },
+      {
+        "seconds": 0.0059599000014713965,
+        "timestamp": "2026-02-27T16:27:53.845625+00:00"
+      },
+      {
+        "seconds": 0.007285300001967698,
+        "timestamp": "2026-02-27T16:29:23.661145+00:00"
+      },
+      {
+        "seconds": 0.005225599998084363,
+        "timestamp": "2026-02-27T16:29:23.690655+00:00"
+      },
+      {
+        "seconds": 0.00600789999589324,
+        "timestamp": "2026-02-27T16:29:23.717658+00:00"
+      },
+      {
+        "seconds": 0.006846099997346755,
+        "timestamp": "2026-02-27T16:29:23.748173+00:00"
+      },
+      {
+        "seconds": 0.007341700002143625,
+        "timestamp": "2026-02-27T16:29:23.779175+00:00"
+      },
+      {
+        "seconds": 0.0066939000025740825,
+        "timestamp": "2026-02-27T16:29:23.809175+00:00"
+      },
+      {
+        "seconds": 0.0062605999992229044,
+        "timestamp": "2026-02-27T16:29:23.840172+00:00"
+      },
+      {
+        "seconds": 0.006221400006324984,
+        "timestamp": "2026-02-27T16:29:23.868172+00:00"
+      },
+      {
+        "seconds": 0.00637280000228202,
+        "timestamp": "2026-02-27T16:29:23.896174+00:00"
+      },
+      {
+        "seconds": 0.0059375999990152195,
+        "timestamp": "2026-02-27T16:29:23.923681+00:00"
+      },
+      {
+        "seconds": 0.00589870000112569,
+        "timestamp": "2026-02-27T16:29:23.951681+00:00"
+      },
+      {
+        "seconds": 0.005673899999237619,
+        "timestamp": "2026-02-27T16:29:23.978681+00:00"
+      },
+      {
+        "seconds": 0.00579460000153631,
+        "timestamp": "2026-02-27T16:29:24.005681+00:00"
+      },
+      {
+        "seconds": 0.005855399998836219,
+        "timestamp": "2026-02-27T16:29:24.032684+00:00"
+      },
+      {
+        "seconds": 0.00590340000053402,
+        "timestamp": "2026-02-27T16:29:24.060190+00:00"
+      },
+      {
+        "seconds": 0.005466700000397395,
+        "timestamp": "2026-02-27T16:29:24.087197+00:00"
+      },
+      {
+        "seconds": 0.005835599993588403,
+        "timestamp": "2026-02-27T16:29:24.114702+00:00"
+      },
+      {
+        "seconds": 0.005924500001128763,
+        "timestamp": "2026-02-27T16:29:24.142701+00:00"
+      },
+      {
+        "seconds": 0.005598700001428369,
+        "timestamp": "2026-02-27T16:29:24.170705+00:00"
+      },
+      {
+        "seconds": 0.005979899993690196,
+        "timestamp": "2026-02-27T16:29:24.198702+00:00"
+      },
+      {
+        "seconds": 0.00600269999995362,
+        "timestamp": "2026-02-27T16:29:24.226704+00:00"
+      },
+      {
+        "seconds": 0.005734399994253181,
+        "timestamp": "2026-02-27T16:29:24.254705+00:00"
+      },
+      {
+        "seconds": 0.005031699998653494,
+        "timestamp": "2026-02-27T16:29:24.281701+00:00"
+      },
+      {
+        "seconds": 0.006016999999701511,
+        "timestamp": "2026-02-27T16:29:24.309702+00:00"
+      },
+      {
+        "seconds": 0.005356599998776801,
+        "timestamp": "2026-02-27T16:29:24.336720+00:00"
+      },
+      {
+        "seconds": 0.005863499995029997,
+        "timestamp": "2026-02-27T16:29:24.364702+00:00"
+      },
+      {
+        "seconds": 0.006108900000981521,
+        "timestamp": "2026-02-27T16:29:24.393704+00:00"
+      },
+      {
+        "seconds": 0.0054509000037796795,
+        "timestamp": "2026-02-27T16:29:24.421217+00:00"
+      },
+      {
+        "seconds": 0.0060252999974181876,
+        "timestamp": "2026-02-27T16:29:24.449717+00:00"
+      },
+      {
+        "seconds": 0.005867300002137199,
+        "timestamp": "2026-02-27T16:29:24.477721+00:00"
+      },
+      {
+        "seconds": 0.005538600002182648,
+        "timestamp": "2026-02-27T16:29:24.504722+00:00"
+      },
+      {
+        "seconds": 0.005796899997221772,
+        "timestamp": "2026-02-27T16:29:24.532720+00:00"
+      },
+      {
+        "seconds": 0.005935499997576699,
+        "timestamp": "2026-02-27T16:29:24.560721+00:00"
+      },
+      {
+        "seconds": 0.005720000001019798,
+        "timestamp": "2026-02-27T16:29:24.589720+00:00"
+      },
+      {
+        "seconds": 0.00581640000018524,
+        "timestamp": "2026-02-27T16:29:24.617721+00:00"
+      },
+      {
+        "seconds": 0.006090500006393995,
+        "timestamp": "2026-02-27T16:29:24.645721+00:00"
+      },
+      {
+        "seconds": 0.005830300004163291,
+        "timestamp": "2026-02-27T16:29:24.673721+00:00"
+      },
+      {
+        "seconds": 0.005863799997314345,
+        "timestamp": "2026-02-27T16:29:24.701721+00:00"
+      },
+      {
+        "seconds": 0.00591050000366522,
+        "timestamp": "2026-02-27T16:29:24.730666+00:00"
+      },
+      {
+        "seconds": 0.00590340000053402,
+        "timestamp": "2026-02-27T16:29:24.759180+00:00"
+      },
+      {
+        "seconds": 0.005412899998191278,
+        "timestamp": "2026-02-27T16:29:24.787181+00:00"
+      },
+      {
+        "seconds": 0.005993200000375509,
+        "timestamp": "2026-02-27T16:29:24.815689+00:00"
+      },
+      {
+        "seconds": 0.005523899999388959,
+        "timestamp": "2026-02-27T16:29:24.843689+00:00"
+      },
+      {
+        "seconds": 0.0054462999978568405,
+        "timestamp": "2026-02-27T16:29:24.871689+00:00"
+      },
+      {
+        "seconds": 0.005838400000357069,
+        "timestamp": "2026-02-27T16:29:24.900692+00:00"
+      },
+      {
+        "seconds": 0.006059999999706633,
+        "timestamp": "2026-02-27T16:29:24.929154+00:00"
+      },
+      {
+        "seconds": 0.005867400002898648,
+        "timestamp": "2026-02-27T16:29:24.957154+00:00"
+      },
+      {
+        "seconds": 0.005834700001287274,
+        "timestamp": "2026-02-27T16:29:24.985152+00:00"
+      },
+      {
+        "seconds": 0.005808699999761302,
+        "timestamp": "2026-02-27T16:29:25.013154+00:00"
+      },
+      {
+        "seconds": 0.00599789999978384,
+        "timestamp": "2026-02-27T16:29:25.042154+00:00"
+      },
+      {
+        "seconds": 0.005180899999686517,
+        "timestamp": "2026-02-27T16:29:25.070152+00:00"
+      },
+      {
+        "seconds": 0.005602600002021063,
+        "timestamp": "2026-02-27T16:29:25.098154+00:00"
+      }
+    ],
+    "ingest_api": [
+      {
+        "seconds": 1.1480767000030028,
+        "timestamp": "2026-02-27T16:10:51.603496+00:00"
+      },
+      {
+        "seconds": 0.8688032999998541,
+        "timestamp": "2026-02-27T16:10:52.696457+00:00"
+      },
+      {
+        "seconds": 0.826784900003986,
+        "timestamp": "2026-02-27T16:11:06.024466+00:00"
+      },
+      {
+        "seconds": 0.9080834999986109,
+        "timestamp": "2026-02-27T16:11:56.231573+00:00"
+      },
+      {
+        "seconds": 0.9204593999966164,
+        "timestamp": "2026-02-27T16:13:13.985948+00:00"
+      },
+      {
+        "seconds": 0.930895600002259,
+        "timestamp": "2026-02-27T16:14:27.049835+00:00"
+      },
+      {
+        "seconds": 1.036611700001231,
+        "timestamp": "2026-02-27T16:15:49.527167+00:00"
+      },
+      {
+        "seconds": 1.0941639000011492,
+        "timestamp": "2026-02-27T16:16:16.192081+00:00"
+      },
+      {
+        "seconds": 1.2365609999978915,
+        "timestamp": "2026-02-27T16:17:10.807262+00:00"
+      },
+      {
+        "seconds": 1.1262298000001465,
+        "timestamp": "2026-02-27T16:18:27.030478+00:00"
+      },
+      {
+        "seconds": 1.0898234000051161,
+        "timestamp": "2026-02-27T16:21:57.088158+00:00"
+      },
+      {
+        "seconds": 1.1935805000030086,
+        "timestamp": "2026-02-27T16:25:27.533611+00:00"
+      },
+      {
+        "seconds": 1.2937954000008176,
+        "timestamp": "2026-02-27T16:27:53.868134+00:00"
+      },
+      {
+        "seconds": 1.4637232999957632,
+        "timestamp": "2026-02-27T16:29:25.121670+00:00"
+      }
+    ],
+    "naming_completion": [
+      {
+        "seconds": 8.6942784999992,
+        "timestamp": "2026-02-27T16:10:53.442203+00:00"
+      },
+      {
+        "seconds": 5.65525560000242,
+        "timestamp": "2026-02-27T16:11:05.381640+00:00"
+      },
+      {
+        "seconds": 20.277825099998154,
+        "timestamp": "2026-02-27T16:11:32.449861+00:00"
+      },
+      {
+        "seconds": 9.892963000005693,
+        "timestamp": "2026-02-27T16:12:51.968081+00:00"
+      },
+      {
+        "seconds": 39.475763800001005,
+        "timestamp": "2026-02-27T16:14:14.861329+00:00"
+      },
+      {
+        "seconds": 24.415161799995985,
+        "timestamp": "2026-02-27T16:14:42.715805+00:00"
+      },
+      {
+        "seconds": 17.995904000003065,
+        "timestamp": "2026-02-27T16:15:56.734695+00:00"
+      },
+      {
+        "seconds": 10.542121899998165,
+        "timestamp": "2026-02-27T16:16:35.710802+00:00"
+      },
+      {
+        "seconds": 12.508969599999546,
+        "timestamp": "2026-02-27T16:17:03.133006+00:00"
+      },
+      {
+        "seconds": 5.987881799999741,
+        "timestamp": "2026-02-27T16:20:11.385797+00:00"
+      },
+      {
+        "seconds": 19.779438199999277,
+        "timestamp": "2026-02-27T16:21:34.695667+00:00"
+      },
+      {
+        "seconds": 60.56324379999569,
+        "timestamp": "2026-02-27T16:22:55.831261+00:00"
+      },
+      {
+        "seconds": 5.405568200003472,
+        "timestamp": "2026-02-27T16:25:10.324705+00:00"
+      },
+      {
+        "seconds": 17.576112199996714,
+        "timestamp": "2026-02-27T16:25:12.165757+00:00"
+      },
+      {
+        "seconds": 13.738386099998024,
+        "timestamp": "2026-02-27T16:27:37.469460+00:00"
+      },
+      {
+        "seconds": 8.935803000000305,
+        "timestamp": "2026-02-27T16:29:11.618667+00:00"
+      }
+    ],
+    "chat_completion": [
+      {
+        "seconds": 222.6060653999957,
+        "timestamp": "2026-02-27T16:10:59.698003+00:00"
+      },
+      {
+        "seconds": 298.9617229999967,
+        "timestamp": "2026-02-27T16:11:12.147064+00:00"
+      },
+      {
+        "seconds": 273.3745108000003,
+        "timestamp": "2026-02-27T16:12:42.047558+00:00"
+      },
+      {
+        "seconds": 334.3808011999972,
+        "timestamp": "2026-02-27T16:13:35.356342+00:00"
+      },
+      {
+        "seconds": 205.54031789999863,
+        "timestamp": "2026-02-27T16:14:18.271419+00:00"
+      },
+      {
+        "seconds": 488.7441112999986,
+        "timestamp": "2026-02-27T16:15:38.705555+00:00"
+      },
+      {
+        "seconds": 533.926633799998,
+        "timestamp": "2026-02-27T16:16:25.133224+00:00"
+      },
+      {
+        "seconds": 377.3207612000042,
+        "timestamp": "2026-02-27T16:16:36.974446+00:00"
+      },
+      {
+        "seconds": 358.95146530000056,
+        "timestamp": "2026-02-27T16:16:50.588741+00:00"
+      },
+      {
+        "seconds": 338.2726423999993,
+        "timestamp": "2026-02-27T16:20:05.359391+00:00"
+      },
+      {
+        "seconds": 298.64621610000177,
+        "timestamp": "2026-02-27T16:21:14.877918+00:00"
+      },
+      {
+        "seconds": 598.9611612000008,
+        "timestamp": "2026-02-27T16:21:55.228013+00:00"
+      },
+      {
+        "seconds": 343.069608400001,
+        "timestamp": "2026-02-27T16:22:20.082311+00:00"
+      },
+      {
+        "seconds": 283.1404197000011,
+        "timestamp": "2026-02-27T16:24:54.549240+00:00"
+      },
+      {
+        "seconds": 474.02971460000117,
+        "timestamp": "2026-02-27T16:25:04.878448+00:00"
+      },
+      {
+        "seconds": 326.55957430000126,
+        "timestamp": "2026-02-27T16:27:23.689573+00:00"
+      },
+      {
+        "seconds": 352.18224620000547,
+        "timestamp": "2026-02-27T16:29:02.639442+00:00"
+      }
+    ],
+    "batch_generation": [
+      {
+        "seconds": 6252.702557199998,
+        "timestamp": "2026-02-27T16:29:25.165310+00:00"
+      }
+    ]
+  }
+}

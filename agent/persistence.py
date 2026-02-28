@@ -58,6 +58,7 @@ async def save_responses(
         "dataset_name": meta["name"],
         "dataset_description": meta["description"],
         "dataset_id": 0,
+        "run_id": run_id,
         "model": model,
         "example": graded,
         "prompt": prompt,

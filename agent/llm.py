@@ -58,13 +58,14 @@ async def run_agent_async(
     )
     logger.saveToLog(
         (
-            "Successfully called OpenRouter API. "
-            f"Model Used: {model}, "
-            f"Tokens Used: {response.usage.total_tokens}, "
-            f"Total Cost: {(total_cost, input_cost, output_cost)} "
-            f"System Prompt Preview: {_summarize_for_log(system_prompt)} "
-            f"User Prompt Preview: {_summarize_for_log(user_prompt)} "
-            f"Response Preview: {_summarize_for_log(response.choices[0].message.content)}"
+            "OpenRouter API call succeeded. "
+            f"stage={stage} "
+            f"model={model} "
+            f"tokens={response.usage.total_tokens} "
+            f"cost_usd={{total:{total_cost},input:{input_cost},output:{output_cost}}} "
+            f"prompt_chars={len((system_prompt or '')) + len((user_prompt or ''))} "
+            f"response_chars={len((response.choices[0].message.content or ''))} "
+            f"response_preview={_summarize_for_log(response.choices[0].message.content, 180)}"
         ),
         "INFO",
     )

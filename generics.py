@@ -20,14 +20,15 @@ def response_builder(
     message: str,
     count: int | None = None,
     errors: int | None = None,
-    statusCode: int = 200
+    statusCode: int = 200,
+    data: dict | None = None
 ):
     status = statusCode
     if not (valid_http(statusCode)):
         status = 500
 
     return JSONResponse(
-        {"success": success, "message": message, "amount": count, "errors": errors},
+        {"success": success, "message": message, "amount": count, "errors": errors, "data": data},
         status_code=status,
     )
 
@@ -38,6 +39,7 @@ class TimedLabel(enum.Enum):
     INGEST_REQUEST = "ingest_api"
     GRADING_CALL = "grading_completion"
     EMBEDDING_CALL = "embedding_completion"
+    BATCH_GENERATION = "batch_generation"
 
 
 @contextmanager
@@ -51,8 +53,8 @@ def timer(label: TimedLabel):
 
 
 def saveTime(label: str, seconds: float):
-    rows = _load_rows()
-    summary = _load_summary()
+    rows = _load_speed_rows()
+    summary = _load_speed_summary()
 
     bucket = rows.setdefault(label, [])
     bucket.append(
@@ -73,13 +75,13 @@ def saveTime(label: str, seconds: float):
         "all_time": avg(all_times),
     }
 
-    _write_rows(rows)
-    _write_summary(summary)
+    _write_speed_rows(rows)
+    _write_speed_summary(summary)
 
 
 def saveScore(label: str, score: float, metadata: dict | None = None):
-    rows = _load_rows()
-    summary = _load_summary()
+    rows = _load_grading_rows()
+    summary = _load_grading_summary()
 
     safe_score = max(0.0, min(10.0, float(score)))
 
@@ -103,8 +105,8 @@ def saveScore(label: str, score: float, metadata: dict | None = None):
         "all_time": avg(all_scores),
     }
 
-    _write_rows(rows)
-    _write_summary(summary)
+    _write_grading_rows(rows)
+    _write_grading_summary(summary)
 
 
 def saveCost(
@@ -119,8 +121,8 @@ def saveCost(
     topic: str | None = None,
     dataset_key: str | None = None,
 ):
-    rows = _load_rows()
-    summary = _load_summary()
+    rows = _load_speed_rows()
+    summary = _load_speed_summary()
     bucket = rows.setdefault("api_cost", [])
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -166,12 +168,12 @@ def saveCost(
     totals["by_dataset"] = by_dataset
     summary["api_cost"] = totals
 
-    _write_rows(rows)
-    _write_summary(summary)
+    _write_speed_rows(rows)
+    _write_speed_summary(summary)
 
 
 def get_run_costs(run_id: str) -> dict:
-    rows = _load_rows()
+    rows = _load_speed_rows()
     entries = rows.get("api_cost", [])
     generation_stages = {"generation", "naming", "regeneration_batch"}
     grading_stages = {"grading_batch", "grading_regeneration_batch"}
@@ -201,12 +203,12 @@ def new_run_id() -> str:
     return str(uuid.uuid4())
 
 
-def _rows_path() -> str:
-    return "logs/rows.json"
+def _speed_benchmark_path() -> str:
+    return "logs/speed_benchmark.json"
 
 
-def _summary_path() -> str:
-    return "logs/summary.json"
+def _grading_benchmark_path() -> str:
+    return "logs/grading_benchmark.json"
 
 
 def _load_json_file(path: str) -> dict:
@@ -225,17 +227,71 @@ def _write_json_file(path: str, data: dict):
         json.dump(data, f, indent=2)
 
 
-def _load_rows() -> dict:
-    return _load_json_file(_rows_path())
+def _normalize_benchmark_document(data: dict) -> dict:
+    if not isinstance(data, dict):
+        return {"rows": {}, "summary": {}}
+
+    if "rows" in data or "summary" in data:
+        rows = data.get("rows", {})
+        summary = data.get("summary", {})
+        return {
+            "rows": rows if isinstance(rows, dict) else {},
+            "summary": summary if isinstance(summary, dict) else {},
+        }
+
+    rows = {}
+    summary = {}
+    for label, payload in data.items():
+        if not isinstance(payload, dict):
+            continue
+        entries = payload.get("entries", [])
+        averages = payload.get("averages", {})
+        if isinstance(entries, list):
+            rows[label] = entries
+        if isinstance(averages, dict):
+            summary[label] = averages
+    return {"rows": rows, "summary": summary}
 
 
-def _write_rows(data: dict):
-    _write_json_file(_rows_path(), data)
+def _load_benchmark_document(path: str) -> dict:
+    return _normalize_benchmark_document(_load_json_file(path))
 
 
-def _load_summary() -> dict:
-    return _load_json_file(_summary_path())
+def _write_benchmark_document(path: str, rows: dict, summary: dict):
+    _write_json_file(path, {"summary": summary, "rows": rows})
 
 
-def _write_summary(data: dict):
-    _write_json_file(_summary_path(), data)
+def _load_speed_rows() -> dict:
+    return _load_benchmark_document(_speed_benchmark_path())["rows"]
+
+
+def _write_speed_rows(data: dict):
+    doc = _load_benchmark_document(_speed_benchmark_path())
+    _write_benchmark_document(_speed_benchmark_path(), data, doc["summary"])
+
+
+def _load_speed_summary() -> dict:
+    return _load_benchmark_document(_speed_benchmark_path())["summary"]
+
+
+def _write_speed_summary(data: dict):
+    doc = _load_benchmark_document(_speed_benchmark_path())
+    _write_benchmark_document(_speed_benchmark_path(), doc["rows"], data)
+
+
+def _load_grading_rows() -> dict:
+    return _load_benchmark_document(_grading_benchmark_path())["rows"]
+
+
+def _write_grading_rows(data: dict):
+    doc = _load_benchmark_document(_grading_benchmark_path())
+    _write_benchmark_document(_grading_benchmark_path(), data, doc["summary"])
+
+
+def _load_grading_summary() -> dict:
+    return _load_benchmark_document(_grading_benchmark_path())["summary"]
+
+
+def _write_grading_summary(data: dict):
+    doc = _load_benchmark_document(_grading_benchmark_path())
+    _write_benchmark_document(_grading_benchmark_path(), doc["rows"], data)

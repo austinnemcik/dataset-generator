@@ -1,17 +1,17 @@
 import numpy as np
 from generics import TimedLabel, timer
-
+import torch
+from sentence_transformers import SentenceTransformer
 import logger
 
 from .settings import THRESHOLD, client
 
+model = SentenceTransformer("all-MiniLM-L6-v2", device="cuda")
 
 def get_embedding(text: str):
     with timer(TimedLabel.EMBEDDING_CALL):
-        response = client.embeddings.create(
-            model="openai/text-embedding-3-small", input=text
-        )
-    return response.data[0].embedding
+        embedding = model.encode(text)
+    return embedding
 
 
 def cosine_similarity(a: list[float], b: list[float]):
@@ -30,4 +30,3 @@ def is_duplicate(
             logger.saveToLog("Discarding duplicate example", "INFO")
             return True
     return False
-
