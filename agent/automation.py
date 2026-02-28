@@ -255,6 +255,7 @@ async def build_generation_plan(
         run_topic = planned_topics[i % len(planned_topics)]
         resolved_agent = get_random_agent(rng) if random_agent else (agent or AgentType.qa)
         dataset_key = f"{run_id}: {run_topic}"
+        run_seed = rng.randint(0, 2_147_483_647)
         run_plan.append(
             {
                 "item_index": i,
@@ -269,7 +270,7 @@ async def build_generation_plan(
                 "retry_backoff_seconds": retry_backoff_seconds,
                 "source_material": source_material,
                 "model": model,
-                "seed": seed,
+                "seed": run_seed,
             }
         )
 
@@ -513,6 +514,7 @@ def _prepare_item_attempt(item_id: int) -> tuple[dict, bool] | None:
                 "source_material": item.source_material,
                 "model": item.model,
                 "slot_key": item.slot_key,
+                "seed": item.seed,
             },
             item.attempts > (item.max_retries + 1),
         )
@@ -611,6 +613,7 @@ async def _execute_batch_item(item_id: int) -> dict | None:
                 source_material=item_data["source_material"],
                 run_id=item_data["run_id"],
                 dataset_key=item_data["dataset_key"],
+                seed=item_data["seed"],
             )
             ingest_result = await save_responses(
                 agent_type=resolved_agent,

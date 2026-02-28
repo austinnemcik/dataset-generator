@@ -113,3 +113,40 @@ class BatchRunItem(SQLModel, table=True):
     completed_at: datetime | None = None
     batch_run: "BatchRun" = Relationship(back_populates="items")
 
+
+class ImportHistory(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    status: str = Field(default="completed", index=True)
+    source_url: str
+    method: str = Field(default="GET")
+    detected_format: str | None = None
+    dataset_id: int | None = Field(default=None, foreign_key="dataset.id")
+    dataset_name: str | None = None
+    request_headers_json: str | None = None
+    request_body_json: str | None = None
+    field_mapper_json: str | None = None
+    prompt: str | None = None
+    source_label: str | None = None
+    fetched_records: int = 0
+    normalized_records: int = 0
+    imported_records: int = 0
+    duplicate_records: int = 0
+    invalid_records: int = 0
+    error: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class ExportHistory(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    status: str = Field(default="completed", index=True)
+    export_format: str
+    dataset_ids_json: str
+    options_json: str | None = None
+    output_filename: str | None = None
+    output_path: str | None = None
+    total_examples: int = 0
+    train_examples: int = 0
+    val_examples: int = 0
+    error: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+

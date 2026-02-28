@@ -18,10 +18,11 @@ async def generate_dataset(
     model: str = DEFAULT_MODEL,
     run_id: str | None = None,
     dataset_key: str | None = None,
+    seed: int | None = None,
 ) -> list[dict]:
     model = model or DEFAULT_MODEL
     system = load_prompt(agent_type.value)
-    prompt = build_prompt(agent_type, topic, amt, source_material)
+    prompt = build_prompt(agent_type, topic, amt, source_material, seed=seed)
     parse_errors: list[str] = []
     for attempt in range(MAX_GENERATION_RETRIES + 1):
         retry_suffix = ""
