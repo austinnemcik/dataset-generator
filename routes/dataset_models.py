@@ -92,5 +92,10 @@ class ScraperIntakeRequest(BaseModel):
     model: str | None = None
     prompt: str = "Imported scraper text"
     dedupe_threshold: float = 0.8
+    dedupe_against_existing: bool = True
+    dedupe_within_payload: bool = True
+    max_records: int = 2000
+    chunk_size: int = 200
+    response_char_limit: int = 160
     preview_only: bool = False
     preview_limit: int = 10
