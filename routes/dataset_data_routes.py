@@ -13,7 +13,13 @@ from sqlmodel import Session, select
 from agent import generate_dataset, get_embedding, is_duplicate, save_responses
 from database import Dataset, ExportHistory, ImportHistory, TrainingExample, get_session
 from generics import TimedLabel, get_latest_grading_result, new_run_id, response_builder, timer
-from routes.dataset_models import ExportRequest, ExternalImportRequest, Generation, IngestExamples
+from routes.dataset_models import (
+    ExportRequest,
+    ExternalImportRequest,
+    Generation,
+    IngestExamples,
+    ScraperIntakeRequest,
+)
 from routes.dataset_shared import resolve_source_material
 import logger
 
@@ -202,6 +208,57 @@ async def _fetch_external_payload(body: ExternalImportRequest):
             return response.json()
         except ValueError:
             raise ValueError("External import endpoint did not return JSON.")
+
+
+
+def _normalize_scraper_text(text: str, response_char_limit: int) -> tuple[str, str] | None:
+    normalized = " ".join(str(text or "").split())
+    if len(normalized) < 8:
+        return None
+    snippet = normalized[:response_char_limit]
+    instruction = "Summarize the scraped page content into a concise, accurate answer."
+    response = snippet
+    return instruction, response
+
+
+
+def _iter_chunks(items: list, chunk_size: int):
+    for i in range(0, len(items), chunk_size):
+        yield items[i : i + chunk_size]
+
+def _scraper_reference_card() -> dict:
+    return {
+        "title": "Scraper Intake Endpoint",
+        "method": "POST",
+        "endpoint": "/dataset/intake/scraper",
+        "description": "Accepts normalized text payloads from external scrapers and imports them as training examples.",
+        "curl": (
+            "curl -X POST http://localhost:8000/dataset/intake/scraper\n"
+            "  -H 'Content-Type: application/json'\n"
+            "  -d '{\n"
+            "    \"dataset_name\": \"scraped-support-pages\",\n"
+            "    \"prompt\": \"Imported scraper text\",\n"
+            "    \"records\": [\n"
+            "      {\"text\": \"Reset your password from the account settings page...\", \"source_url\": \"https://example.com/help/reset-password\", \"title\": \"Password reset\"}\n"
+            "    ]\n"
+            "  }'"
+        ),
+        "payload_schema": {
+            "records": [{"text": "string", "source_url": "string?", "title": "string?", "metadata": "object?"}],
+            "dataset_name": "string?",
+            "dataset_description": "string?",
+            "model": "string?",
+            "prompt": "string (default: Imported scraper text)",
+            "dedupe_threshold": "float (0,1]",
+            "dedupe_against_existing": "boolean (default: true)",
+            "dedupe_within_payload": "boolean (default: true)",
+            "max_records": "int (default: 2000)",
+            "chunk_size": "int 1-500",
+            "response_char_limit": "int 32-8000",
+            "preview_only": "boolean",
+            "preview_limit": "int 1-100",
+        },
+    }
 
 
 def _load_existing_import_embeddings(session: Session) -> list[list[float]]:
@@ -432,6 +489,155 @@ def _run_export_request(session: Session, body: ExportRequest) -> tuple[str, Exp
 
 
 def register_data_routes(router: APIRouter):
+
+    @router.get("/intake/reference")
+    def intake_reference_card():
+        return response_builder(
+            success=True,
+            message="Intake reference loaded.",
+            statusCode=200,
+            data={"cards": [_scraper_reference_card()]},
+        )
+
+    @router.post("/intake/scraper")
+    def intake_scraper_text(
+        body: ScraperIntakeRequest,
+        session: Session = Depends(get_session),
+    ):
+        try:
+            if body.dedupe_threshold <= 0 or body.dedupe_threshold > 1:
+                raise ValueError("dedupe_threshold must be in the range (0, 1].")
+            if body.preview_limit <= 0 or body.preview_limit > 100:
+                raise ValueError("preview_limit must be in the range 1-100.")
+            if body.chunk_size <= 0 or body.chunk_size > 500:
+                raise ValueError("chunk_size must be in the range 1-500.")
+            if body.response_char_limit < 32 or body.response_char_limit > 8000:
+                raise ValueError("response_char_limit must be in the range 32-8000.")
+            if not body.records:
+                raise ValueError("records must contain at least one item.")
+            if len(body.records) > body.max_records:
+                raise ValueError(f"records exceeds max_records ({body.max_records}). Split into smaller payloads.")
+
+            existing_embeddings = _load_existing_import_embeddings(session) if body.dedupe_against_existing else []
+            payload_embeddings: list[list[float]] = []
+            duplicate_records = 0
+            invalid_records = 0
+            imported_examples: list[TrainingExample] = []
+
+            for chunk in _iter_chunks(body.records, body.chunk_size):
+                for record in chunk:
+                    parsed = _normalize_scraper_text(record.text, body.response_char_limit)
+                    if not parsed:
+                        invalid_records += 1
+                        continue
+                    instruction, response = parsed
+                    if record.source_url or record.title:
+                        context_parts = []
+                        if record.title:
+                            context_parts.append(f"Title: {record.title}")
+                        if record.source_url:
+                            context_parts.append(f"Source: {record.source_url}")
+                        if context_parts:
+                            instruction = f"{instruction}\n\n" + "\n".join(context_parts)
+
+                    embedding = get_embedding(instruction)
+                    embedding_list = embedding.tolist() if hasattr(embedding, "tolist") else embedding
+                    if not isinstance(embedding_list, list) or not embedding_list:
+                        invalid_records += 1
+                        continue
+
+                    comparable_embeddings: list[list[float]] = []
+                    if body.dedupe_against_existing:
+                        comparable_embeddings.extend(
+                            existing for existing in existing_embeddings if len(existing) == len(embedding_list)
+                        )
+                    if body.dedupe_within_payload:
+                        comparable_embeddings.extend(
+                            existing for existing in payload_embeddings if len(existing) == len(embedding_list)
+                        )
+
+                    if comparable_embeddings and is_duplicate(
+                        embedding_list,
+                        comparable_embeddings,
+                        threshold=body.dedupe_threshold,
+                    ):
+                        duplicate_records += 1
+                        continue
+
+                    if body.dedupe_within_payload:
+                        payload_embeddings.append(embedding_list)
+                    imported_examples.append(
+                        TrainingExample(
+                            prompt=body.prompt,
+                            instruction=instruction,
+                            response=response,
+                            embedding=json.dumps(embedding_list),
+                        )
+                    )
+
+            if body.preview_only:
+                return response_builder(
+                    success=True,
+                    message="Successfully previewed scraper intake.",
+                    statusCode=200,
+                    data={
+                        "preview_only": True,
+                        "received_records": len(body.records),
+                        "importable_records": len(imported_examples),
+                        "duplicate_records": duplicate_records,
+                        "invalid_records": invalid_records,
+                        "chunk_size": body.chunk_size,
+                        "dedupe_against_existing": body.dedupe_against_existing,
+                        "dedupe_within_payload": body.dedupe_within_payload,
+                        "sample_records": [
+                            {"instruction": ex.instruction, "response": ex.response}
+                            for ex in imported_examples[: body.preview_limit]
+                        ],
+                    },
+                )
+
+            if not imported_examples:
+                raise ValueError("No importable records remained after normalization and deduplication.")
+
+            dataset = Dataset(
+                name=body.dataset_name or str(RandomNameGenerator()),
+                description=body.dataset_description,
+                model=body.model,
+                examples=imported_examples,
+            )
+            session.add(dataset)
+            session.commit()
+            session.refresh(dataset)
+
+            return response_builder(
+                success=True,
+                message="Successfully imported scraper text dataset.",
+                statusCode=201,
+                data={
+                    "dataset_id": dataset.id,
+                    "dataset_name": dataset.name,
+                    "received_records": len(body.records),
+                    "imported_records": len(imported_examples),
+                    "duplicate_records": duplicate_records,
+                    "invalid_records": invalid_records,
+                    "chunk_size": body.chunk_size,
+                    "dedupe_against_existing": body.dedupe_against_existing,
+                    "dedupe_within_payload": body.dedupe_within_payload,
+                },
+            )
+        except ValueError as e:
+            session.rollback()
+            logger.saveToLog(f"[intake_scraper_text] Validation failed: {e}", "ERROR")
+            return response_builder(success=False, message=str(e), statusCode=400)
+        except Exception as e:
+            session.rollback()
+            logger.saveToLog(f"[intake_scraper_text] Unexpected error: {e}", "ERROR")
+            return response_builder(
+                success=False,
+                message="An unexpected error occurred while importing scraper text.",
+                statusCode=500,
+            )
+
     @router.post("/ingest")
     def ingest_example(body: IngestExamples, session: Session = Depends(get_session)):
         try:
@@ -1009,6 +1215,9 @@ def register_data_routes(router: APIRouter):
                         "importable_records": len(imported_examples),
                         "duplicate_records": duplicate_records,
                         "invalid_records": invalid_records,
+                        "chunk_size": body.chunk_size,
+                        "dedupe_against_existing": body.dedupe_against_existing,
+                        "dedupe_within_payload": body.dedupe_within_payload,
                         "sample_records": [
                             {
                                 "instruction": example.instruction,
@@ -1073,6 +1282,9 @@ def register_data_routes(router: APIRouter):
                     "imported_records": len(imported_examples),
                     "duplicate_records": duplicate_records,
                     "invalid_records": invalid_records,
+                    "chunk_size": body.chunk_size,
+                    "dedupe_against_existing": body.dedupe_against_existing,
+                    "dedupe_within_payload": body.dedupe_within_payload,
                 },
             )
         except ValueError as e:
