@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 from agent import AgentType
@@ -74,3 +76,21 @@ class ExportRequest(BaseModel):
     shuffle: bool = False
     train_val_split: float | None = None
     max_examples: int | None = None
+
+
+class ScraperTextRecord(BaseModel):
+    text: str
+    source_url: str | None = None
+    title: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class ScraperIntakeRequest(BaseModel):
+    records: list[ScraperTextRecord]
+    dataset_name: str | None = None
+    dataset_description: str | None = None
+    model: str | None = None
+    prompt: str = "Imported scraper text"
+    dedupe_threshold: float = 0.8
+    preview_only: bool = False
+    preview_limit: int = 10
