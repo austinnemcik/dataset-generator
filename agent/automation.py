@@ -16,6 +16,7 @@ from .persistence import save_responses
 from .types import AgentType
 
 _TERMINAL_ITEM_STATUSES = {"completed", "failed"}
+_BLOCKING_BATCH_STATUSES = {"paused", "cancelled"}
 _ACTIVE_BATCH_RUNS: set[str] = set()
 _ACTIVE_BATCH_RUNS_GUARD = asyncio.Lock()
 
@@ -89,6 +90,14 @@ def _update_batch_counts(session: Session, batch_run: BatchRun):
     batch_run.completed_runs = completed
     batch_run.failed_runs = failed
     batch_run.updated_at = utcnow()
+
+    if batch_run.status == "paused":
+        batch_run.completed_at = None
+        return
+    if batch_run.status == "cancelled":
+        if running == 0:
+            batch_run.completed_at = batch_run.completed_at or utcnow()
+        return
 
     if running > 0:
         batch_run.status = "running"
@@ -169,6 +178,8 @@ def _build_batch_summary(batch_run: BatchRun, items: list[BatchRunItem]) -> dict
         "failed": batch_run.failed_runs,
         "queued": batch_run.queued_runs,
         "running": batch_run.running_runs,
+        "is_paused": batch_run.status == "paused",
+        "is_cancelled": batch_run.status == "cancelled",
         "seed": request_payload.get("seed"),
         "max_concurrency": request_payload.get("max_concurrency"),
         "max_retries": request_payload.get("max_retries"),
@@ -330,6 +341,106 @@ def get_batch_run_status(batch_run_id: str) -> dict | None:
         return summary
 
 
+def pause_batch_run(batch_run_id: str) -> dict | None:
+    with Session(engine) as session:
+        batch_run = session.exec(select(BatchRun).where(BatchRun.run_id == batch_run_id)).first()
+        if not batch_run:
+            return None
+        if batch_run.status in {"completed", "failed", "cancelled"}:
+            items = session.exec(
+                select(BatchRunItem).where(BatchRunItem.batch_run_id == batch_run.id)
+            ).all()
+            return _build_batch_summary(batch_run, items)
+        batch_run.status = "paused"
+        batch_run.updated_at = utcnow()
+        items = session.exec(
+            select(BatchRunItem).where(BatchRunItem.batch_run_id == batch_run.id)
+        ).all()
+        _build_batch_summary(batch_run, items)
+        session.add(batch_run)
+        session.commit()
+        return _build_batch_summary(batch_run, items)
+
+
+def stop_batch_run(batch_run_id: str) -> dict | None:
+    with Session(engine) as session:
+        batch_run = session.exec(select(BatchRun).where(BatchRun.run_id == batch_run_id)).first()
+        if not batch_run:
+            return None
+        now = utcnow()
+        items = session.exec(
+            select(BatchRunItem).where(BatchRunItem.batch_run_id == batch_run.id)
+        ).all()
+        for item in items:
+            if item.status == "queued":
+                item.status = "failed"
+                item.error_type = "cancelled"
+                item.error = "Stopped by user before execution"
+                item.completed_at = now
+                item.updated_at = now
+                item.result_json = _json_dump(_result_from_item(item))
+            elif item.status == "running":
+                item.error_type = "cancelled"
+                item.error = "Stop requested while item was already running"
+                item.updated_at = now
+        batch_run.status = "cancelled"
+        batch_run.updated_at = now
+        if batch_run.running_runs == 0:
+            batch_run.completed_at = now
+        _update_batch_counts(session, batch_run)
+        summary = _build_batch_summary(batch_run, items)
+        session.add(batch_run)
+        session.commit()
+        return summary
+
+
+def restart_failed_batch_run(batch_run_id: str) -> dict | None:
+    with Session(engine) as session:
+        batch_run = session.exec(select(BatchRun).where(BatchRun.run_id == batch_run_id)).first()
+        if not batch_run:
+            return None
+
+        items = session.exec(
+            select(BatchRunItem).where(BatchRunItem.batch_run_id == batch_run.id)
+        ).all()
+        failed_items = [item for item in items if item.status == "failed"]
+        if not failed_items:
+            return _build_batch_summary(batch_run, items)
+
+        now = utcnow()
+        for item in failed_items:
+            item.status = "queued"
+            item.attempts = 0
+            item.error_type = None
+            item.error = None
+            item.created_dataset_id = None
+            item.result_json = None
+            item.started_at = None
+            item.completed_at = None
+            item.updated_at = now
+
+        if batch_run.status in {"failed", "completed", "cancelled", "paused"}:
+            batch_run.status = "queued"
+        batch_run.completed_at = None
+        batch_run.updated_at = now
+        _update_batch_counts(session, batch_run)
+        summary = _build_batch_summary(batch_run, items)
+        session.add(batch_run)
+        session.commit()
+        return summary
+
+
+def _batch_run_control_state(item_id: int) -> tuple[str | None, str] | None:
+    with Session(engine) as session:
+        item = session.get(BatchRunItem, item_id)
+        if not item:
+            return None
+        batch_run = session.get(BatchRun, item.batch_run_id)
+        if not batch_run:
+            return None
+        return batch_run.run_id, batch_run.status
+
+
 def _claim_existing_dataset_if_present(item_id: int) -> dict | None:
     with Session(engine) as session:
         item = session.get(BatchRunItem, item_id)
@@ -366,6 +477,8 @@ def _prepare_item_attempt(item_id: int) -> tuple[dict, bool] | None:
             return None
         batch_run = session.get(BatchRun, item.batch_run_id)
         if item.status in _TERMINAL_ITEM_STATUSES:
+            return None
+        if batch_run.status in _BLOCKING_BATCH_STATUSES:
             return None
 
         item.attempts += 1
@@ -461,6 +574,20 @@ async def _execute_batch_item(item_id: int) -> dict | None:
         return claimed
 
     while True:
+        control_state = _batch_run_control_state(item_id)
+        if not control_state:
+            return None
+        _, batch_status = control_state
+        if batch_status == "paused":
+            return None
+        if batch_status == "cancelled":
+            return _finalize_item_failure(
+                item_id,
+                error_type="cancelled",
+                error="Stopped by user before execution",
+                terminal=True,
+            )
+
         prepared = _prepare_item_attempt(item_id)
         if not prepared:
             return None
@@ -498,6 +625,14 @@ async def _execute_batch_item(item_id: int) -> dict | None:
             )
             payload = ingest_result.get("data", {}) if isinstance(ingest_result, dict) else {}
             dataset_id = payload.get("dataset_id") if isinstance(payload, dict) else None
+            control_state = _batch_run_control_state(item_id)
+            if control_state and control_state[1] == "cancelled":
+                return _finalize_item_failure(
+                    item_id,
+                    error_type="cancelled",
+                    error="Stop requested while item was already running",
+                    terminal=True,
+                )
             return _finalize_item_success(item_id, dataset_id=dataset_id)
         except ValueError as e:
             saveToLog(
@@ -559,6 +694,16 @@ async def resume_batch_run(batch_run_id: str, *, max_concurrency: int | None = N
             batch_run = session.exec(select(BatchRun).where(BatchRun.run_id == batch_run_id)).first()
             if not batch_run:
                 raise ValueError("Batch run not found")
+            if batch_run.status == "cancelled":
+                summary = _build_batch_summary(
+                    batch_run,
+                    session.exec(
+                        select(BatchRunItem).where(BatchRunItem.batch_run_id == batch_run.id)
+                    ).all(),
+                )
+                return summary
+            if batch_run.status == "paused":
+                batch_run.status = "running"
 
             request_payload = _json_load(batch_run.request_json, {})
             effective_concurrency = max_concurrency or int(request_payload.get("max_concurrency", 3) or 3)

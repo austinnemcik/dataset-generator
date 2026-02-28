@@ -199,6 +199,18 @@ def get_run_costs(run_id: str) -> dict:
     }
 
 
+def get_latest_grading_result(run_id: str) -> dict | None:
+    rows = _load_grading_rows()
+    entries = rows.get("grading_dataset_score", [])
+    for entry in reversed(entries):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("run_id") != run_id:
+            continue
+        return entry
+    return None
+
+
 def new_run_id() -> str:
     return str(uuid.uuid4())
 

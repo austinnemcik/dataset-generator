@@ -2214,3 +2214,24 @@ For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/St
 2026-02-27 11:29:25,159: [save_responses] Ingested response
 2026-02-27 11:29:25,159: [start_generation] Progress 42/42 (worker=1)
 2026-02-27 11:29:25,159: [start_generation] Completed batch topic=Security vulnerability identification requested=42 saved=32 failed=10 agent_usage={'qa': 32}
+2026-02-28 07:24:47,992: Failed to reach OpenRouter pricing API: HTTPSConnectionPool(host='openrouter.ai', port=443): Max retries exceeded with url: /api/v1/models (Caused by NewConnectionError("HTTPSConnection(host='openrouter.ai', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))
+2026-02-28 07:24:49,730: [run_agent_async] completion call failed: Connection error.
+2026-02-28 07:24:49,730: [start_generation] Topic planning failed, falling back to base topic: Model completion call failed
+2026-02-28 07:24:49,788: [resume_batch_run] batch_run_id=b450573c-0754-46fe-a8b8-b16f1ad78f2e progress=1/2 worker=1
+2026-02-28 07:24:49,793: [resume_batch_run] batch_run_id=b450573c-0754-46fe-a8b8-b16f1ad78f2e progress=2/2 worker=1
+2026-02-28 07:24:49,795: [resume_batch_run] Completed batch_run_id=b450573c-0754-46fe-a8b8-b16f1ad78f2e saved=2 failed=0
+2026-02-28 07:27:32,926: Failed to reach OpenRouter pricing API: HTTPSConnectionPool(host='openrouter.ai', port=443): Max retries exceeded with url: /api/v1/models (Caused by NewConnectionError("HTTPSConnection(host='openrouter.ai', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))
+2026-02-28 07:27:34,600: [run_agent_async] completion call failed: Connection error.
+2026-02-28 07:27:34,600: [start_generation] Topic planning failed, falling back to base topic: Model completion call failed
+2026-02-28 07:27:34,650: [resume_batch_run] batch_run_id=b8544b39-e9cf-4ee3-8a45-61a0e5a1fdfb progress=1/3 worker=1
+2026-02-28 07:27:34,663: [resume_batch_run] batch_run_id=b8544b39-e9cf-4ee3-8a45-61a0e5a1fdfb progress=2/3 worker=1
+2026-02-28 07:27:34,676: [resume_batch_run] batch_run_id=b8544b39-e9cf-4ee3-8a45-61a0e5a1fdfb progress=3/3 worker=1
+2026-02-28 07:27:34,678: [resume_batch_run] Completed batch_run_id=b8544b39-e9cf-4ee3-8a45-61a0e5a1fdfb saved=3 failed=0
+2026-02-28 07:27:35,976: [run_agent_async] completion call failed: Connection error.
+2026-02-28 07:27:35,976: [start_generation] Topic planning failed, falling back to base topic: Model completion call failed
+2026-02-28 07:30:21,549: Failed to reach OpenRouter pricing API: HTTPSConnectionPool(host='openrouter.ai', port=443): Max retries exceeded with url: /api/v1/models (Caused by NewConnectionError("HTTPSConnection(host='openrouter.ai', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))
+2026-02-28 07:30:23,311: [run_agent_async] completion call failed: Connection error.
+2026-02-28 07:30:23,311: [start_generation] Topic planning failed, falling back to base topic: Model completion call failed
+2026-02-28 07:30:23,365: [resume_batch_run] batch_run_id=94c19e44-45be-4e59-8b0f-734162087f27 progress=1/2 worker=1
+2026-02-28 07:30:23,377: [resume_batch_run] batch_run_id=94c19e44-45be-4e59-8b0f-734162087f27 progress=2/2 worker=1
+2026-02-28 07:30:23,379: [resume_batch_run] Completed batch_run_id=94c19e44-45be-4e59-8b0f-734162087f27 saved=3 failed=0

@@ -1,5 +1,5 @@
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi import Depends, APIRouter, Query
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
+from fastapi import Depends, APIRouter, Query, Request
 from pydantic import BaseModel
 from datetime import datetime
 from sqlmodel import Session, select
@@ -11,18 +11,48 @@ import asyncio
 import json
 import tempfile
 import os
-from generics import response_builder, TimedLabel, timer, new_run_id
+from generics import (
+    response_builder,
+    TimedLabel,
+    timer,
+    new_run_id,
+    get_run_costs,
+    get_latest_grading_result,
+)
 from agent import (
     AgentType,
+    pause_batch_run,
+    restart_failed_batch_run,
     run_naming_agent,
+    resume_batch_run,
     get_embedding,
     cosine_similarity,
     is_duplicate,
+    stop_batch_run,
     generate_dataset,
     save_responses,
 )
 from agent.automation import get_batch_run_status, start_generation
 import logger
+
+try:
+    from sse_starlette.sse import EventSourceResponse
+except ImportError:
+    class EventSourceResponse(StreamingResponse):
+        def __init__(self, content, status_code: int = 200, headers: dict | None = None):
+            merged_headers = {
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+            if headers:
+                merged_headers.update(headers)
+            super().__init__(
+                content=content,
+                status_code=status_code,
+                media_type="text/event-stream",
+                headers=merged_headers,
+            )
 
 
 class Example(BaseModel):
@@ -310,6 +340,116 @@ def get_batch_run(run_id: str):
         return response_builder(
             success=False,
             message="An error occurred while fetching batch run status.",
+            statusCode=500,
+        )
+
+
+@data_router.post("/batch/{run_id}/resume")
+async def resume_batch_endpoint(run_id: str):
+    try:
+        summary = await resume_batch_run(run_id)
+        return response_builder(
+            success=True,
+            message="Batch run resumed.",
+            statusCode=200,
+            data=summary,
+        )
+    except ValueError as e:
+        return response_builder(
+            success=False,
+            message=str(e),
+            statusCode=404,
+        )
+    except Exception as e:
+        logger.saveToLog(f"[resume_batch_endpoint] Unexpected error: {e}", "ERROR")
+        return response_builder(
+            success=False,
+            message="An error occurred while resuming the batch run.",
+            statusCode=500,
+        )
+
+
+@data_router.post("/batch/{run_id}/pause")
+def pause_batch_endpoint(run_id: str):
+    try:
+        summary = pause_batch_run(run_id)
+        if not summary:
+            return response_builder(
+                success=False,
+                message="Batch run not found.",
+                statusCode=404,
+            )
+        return response_builder(
+            success=True,
+            message="Batch run paused. In-flight items may still finish.",
+            statusCode=200,
+            data=summary,
+        )
+    except Exception as e:
+        logger.saveToLog(f"[pause_batch_endpoint] Unexpected error: {e}", "ERROR")
+        return response_builder(
+            success=False,
+            message="An error occurred while pausing the batch run.",
+            statusCode=500,
+        )
+
+
+@data_router.post("/batch/{run_id}/stop")
+def stop_batch_endpoint(run_id: str):
+    try:
+        summary = stop_batch_run(run_id)
+        if not summary:
+            return response_builder(
+                success=False,
+                message="Batch run not found.",
+                statusCode=404,
+            )
+        return response_builder(
+            success=True,
+            message="Batch run stop requested. In-flight items may still finish or be marked cancelled.",
+            statusCode=200,
+            data=summary,
+        )
+    except Exception as e:
+        logger.saveToLog(f"[stop_batch_endpoint] Unexpected error: {e}", "ERROR")
+        return response_builder(
+            success=False,
+            message="An error occurred while stopping the batch run.",
+            statusCode=500,
+        )
+
+
+@data_router.post("/batch/{run_id}/restart-failed")
+async def restart_failed_batch_endpoint(run_id: str):
+    try:
+        reset_summary = restart_failed_batch_run(run_id)
+        if not reset_summary:
+            return response_builder(
+                success=False,
+                message="Batch run not found.",
+                statusCode=404,
+            )
+        resumed_summary = await resume_batch_run(run_id)
+        return response_builder(
+            success=True,
+            message="Failed batch items requeued and resumed.",
+            statusCode=200,
+            data={
+                "reset_summary": reset_summary,
+                "current_summary": resumed_summary,
+            },
+        )
+    except ValueError as e:
+        return response_builder(
+            success=False,
+            message=str(e),
+            statusCode=400,
+        )
+    except Exception as e:
+        logger.saveToLog(f"[restart_failed_batch_endpoint] Unexpected error: {e}", "ERROR")
+        return response_builder(
+            success=False,
+            message="An error occurred while restarting failed batch items.",
             statusCode=500,
         )
 
@@ -795,6 +935,47 @@ def _discover_merge_pools(
         "INFO",
     )
     return pools, skipped_without_embeddings
+
+
+def _sse_message(*, data: dict, event: str | None = None, event_id: str | None = None) -> str:
+    lines: list[str] = []
+    if event_id:
+        lines.append(f"id: {event_id}")
+    if event:
+        lines.append(f"event: {event}")
+    payload = json.dumps(data, separators=(",", ":"))
+    for line in payload.splitlines() or ["{}"]:
+        lines.append(f"data: {line}")
+    return "\n".join(lines) + "\n\n"
+
+
+def _build_stream_item_payload(item: dict) -> dict:
+    run_id = item.get("run_id")
+    grading = get_latest_grading_result(run_id) if run_id else None
+    costs = get_run_costs(run_id) if run_id else {
+        "generation_cost": 0.0,
+        "grading_cost": 0.0,
+        "total_cost": 0.0,
+    }
+    return {
+        "run_id": run_id,
+        "dataset_id": item.get("dataset_id"),
+        "dataset_key": item.get("dataset_key"),
+        "status": item.get("status"),
+        "topic": item.get("topic"),
+        "requested_topic": item.get("requested_topic"),
+        "agent": item.get("agent"),
+        "attempts": item.get("attempts"),
+        "error_type": item.get("error_type"),
+        "error": item.get("error"),
+        "score": grading.get("score") if grading else None,
+        "grader_model": grading.get("grader_model") if grading else None,
+        "accepted_count": grading.get("accepted_count") if grading else None,
+        "rejected_count": grading.get("rejected_count") if grading else None,
+        "cost": costs["total_cost"],
+        "generation_cost": costs["generation_cost"],
+        "grading_cost": costs["grading_cost"],
+    }
 
 
 @data_router.post("/merge")
