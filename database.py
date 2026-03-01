@@ -1,12 +1,12 @@
-import os
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from sqlalchemy import text
 from sqlmodel import Field, Relationship, SQLModel, Session, create_engine
 
+from config import get_database_url
+
 load_dotenv()
-_DATABASE_URL = os.getenv("DATABASE_URL")
+_DATABASE_URL = get_database_url()
 
 _engine_kwargs = {"pool_pre_ping": True}
 if _DATABASE_URL and _DATABASE_URL.startswith("postgresql"):
@@ -22,20 +22,6 @@ def utcnow() -> datetime:
 
 def init_db():
     SQLModel.metadata.create_all(engine)
-    with engine.begin() as conn:
-        try:
-            conn.execute(text("ALTER TABLE dataset ADD COLUMN IF NOT EXISTS source_run_id VARCHAR"))
-        except Exception:
-            pass
-        try:
-            conn.execute(
-                text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_dataset_source_run_id "
-                    "ON dataset (source_run_id)"
-                )
-            )
-        except Exception:
-            pass
 
 
 def get_session():

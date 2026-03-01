@@ -5,10 +5,12 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 import logger
+from config import get_settings
 
 load_dotenv()
+_settings = get_settings()
 
-SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
+SERVER_URL = _settings.server_url
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_MODEL = "z-ai/glm-5"
 GRADING_MODEL = "google/gemini-2.5-flash"

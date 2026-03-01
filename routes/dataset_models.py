@@ -64,6 +64,10 @@ class ExternalImportRequest(BaseModel):
     source_label: str | None = None
     timeout_seconds: float = 30.0
     dedupe_threshold: float = 0.8
+    dedupe_against_existing: bool = True
+    dedupe_within_payload: bool = True
+    max_records: int = 2000
+    chunk_size: int = 200
     preview_only: bool = False
     preview_limit: int = 10
 

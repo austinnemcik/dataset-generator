@@ -1,18 +1,16 @@
 import json
 import os
 import tempfile
-import zipfile
-import random
 
-import httpx
 from fastapi import APIRouter, Depends, Query
+import httpx
 from fastapi.responses import FileResponse, JSONResponse
 from funkybob import RandomNameGenerator
 from sqlmodel import Session, select
 
 from agent import generate_dataset, get_embedding, is_duplicate, save_responses
 from database import Dataset, ExportHistory, ImportHistory, TrainingExample, get_session
-from generics import TimedLabel, get_latest_grading_result, new_run_id, response_builder, timer
+from generics import TimedLabel, new_run_id, response_builder, timer
 from routes.dataset_models import (
     ExportRequest,
     ExternalImportRequest,
@@ -21,471 +19,15 @@ from routes.dataset_models import (
     ScraperIntakeRequest,
 )
 from routes.dataset_shared import resolve_source_material
+from routes.data_processing import safe_json_dump, scraper_reference_card
+from services.export_service import run_export_request
+from services.import_service import (
+    build_external_examples,
+    build_scraper_examples,
+    fetch_external_payload,
+    normalize_external_records,
+)
 import logger
-
-
-def _safe_json_dump(value) -> str | None:
-    if value is None:
-        return None
-    try:
-        return json.dumps(value)
-    except (TypeError, ValueError):
-        return json.dumps(str(value))
-
-
-def _get_path_value(payload, path: str | None):
-    if not path:
-        return None
-    current = payload
-    for part in path.split("."):
-        if isinstance(current, dict):
-            if part not in current:
-                return None
-            current = current.get(part)
-            continue
-        if isinstance(current, list):
-            try:
-                index = int(part)
-            except (TypeError, ValueError):
-                return None
-            if index < 0 or index >= len(current):
-                return None
-            current = current[index]
-            continue
-        return None
-    return current
-
-
-def _extract_records(payload) -> list:
-    if isinstance(payload, list):
-        return payload
-    if isinstance(payload, dict):
-        for key in ("data", "rows", "examples", "items", "records", "messages"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                return value
-        return [payload]
-    raise ValueError("Unsupported import payload shape.")
-
-
-def _normalize_alpaca_row(row: dict) -> dict | None:
-    instruction = str(row.get("instruction", "")).strip()
-    input_text = str(row.get("input", "")).strip()
-    response = str(row.get("output", "")).strip()
-    if input_text:
-        instruction = f"{instruction}\n\nInput:\n{input_text}".strip()
-    if instruction and response:
-        return {"instruction": instruction, "response": response}
-    return None
-
-
-def _normalize_with_field_mapper(row: dict, field_mapper: dict[str, str] | None) -> dict | None:
-    if not field_mapper:
-        return None
-    instruction_key = field_mapper.get("instruction")
-    response_key = field_mapper.get("response")
-    if not instruction_key or not response_key:
-        return None
-    instruction = str(_get_path_value(row, instruction_key) or "").strip()
-    response = str(_get_path_value(row, response_key) or "").strip()
-    input_key = field_mapper.get("input")
-    input_value = str(_get_path_value(row, input_key) or "").strip() if input_key else ""
-    if input_value:
-        instruction = f"{instruction}\n\nInput:\n{input_value}".strip()
-    if not instruction or not response:
-        return None
-    return {"instruction": instruction, "response": response}
-
-
-def _normalize_chat_turns(messages: list[dict]) -> list[dict]:
-    out: list[dict] = []
-    pending_instruction: str | None = None
-    for message in messages:
-        if not isinstance(message, dict):
-            continue
-        role = str(
-            message.get("from", message.get("role", message.get("speaker", "")))
-        ).strip().lower()
-        content = str(
-            message.get("value", message.get("content", message.get("text", "")))
-        ).strip()
-        if not content:
-            continue
-        if role in {"human", "user", "prompter"}:
-            pending_instruction = content
-        elif role in {"gpt", "assistant", "bot"} and pending_instruction:
-            out.append({"instruction": pending_instruction, "response": content})
-            pending_instruction = None
-    return out
-
-
-def _detect_format(records: list, field_mapper: dict[str, str] | None = None) -> str:
-    if field_mapper:
-        return "mapped"
-    sample = records[0] if records else None
-    if isinstance(sample, dict):
-        if {"instruction", "output"} <= set(sample.keys()):
-            return "alpaca"
-        if isinstance(sample.get("conversations"), list):
-            return "sharegpt"
-        if isinstance(sample.get("messages"), list):
-            return "chatml"
-    if isinstance(sample, list):
-        return "chatml"
-    return "unknown"
-
-
-def _normalize_import_records(
-    records: list,
-    *,
-    detected_format: str,
-    field_mapper: dict[str, str] | None = None,
-) -> tuple[list[dict], int]:
-    normalized: list[dict] = []
-    invalid = 0
-    for row in records:
-        try:
-            if detected_format == "alpaca" and isinstance(row, dict):
-                parsed = _normalize_alpaca_row(row)
-                if parsed:
-                    normalized.append(parsed)
-                else:
-                    invalid += 1
-            elif detected_format == "mapped" and isinstance(row, dict):
-                parsed = _normalize_with_field_mapper(row, field_mapper)
-                if parsed:
-                    normalized.append(parsed)
-                else:
-                    invalid += 1
-            elif detected_format == "sharegpt" and isinstance(row, dict):
-                conversations = row.get("conversations", [])
-                parsed_rows = _normalize_chat_turns(conversations)
-                if parsed_rows:
-                    normalized.extend(parsed_rows)
-                else:
-                    invalid += 1
-            elif detected_format == "chatml":
-                messages = row if isinstance(row, list) else row.get("messages", []) if isinstance(row, dict) else []
-                parsed_rows = _normalize_chat_turns(messages)
-                if parsed_rows:
-                    normalized.extend(parsed_rows)
-                else:
-                    invalid += 1
-            elif isinstance(row, dict):
-                parsed = _normalize_with_field_mapper(row, field_mapper)
-                if parsed:
-                    normalized.append(parsed)
-                    continue
-                if {"instruction", "response"} <= set(row.keys()):
-                    instruction = str(row.get("instruction", "")).strip()
-                    response = str(row.get("response", "")).strip()
-                    if instruction and response:
-                        normalized.append({"instruction": instruction, "response": response})
-                    else:
-                        invalid += 1
-                else:
-                    invalid += 1
-            else:
-                invalid += 1
-        except Exception:
-            invalid += 1
-    return normalized, invalid
-
-
-async def _fetch_external_payload(body: ExternalImportRequest):
-    method = body.method.upper()
-    headers = body.headers or {}
-    request_kwargs = {"headers": headers, "timeout": body.timeout_seconds}
-    if body.body is not None:
-        if isinstance(body.body, (dict, list)):
-            request_kwargs["json"] = body.body
-        else:
-            request_kwargs["content"] = str(body.body)
-    async with httpx.AsyncClient() as client:
-        response = await client.request(method, body.url, **request_kwargs)
-        response.raise_for_status()
-        try:
-            return response.json()
-        except ValueError:
-            raise ValueError("External import endpoint did not return JSON.")
-
-
-
-def _normalize_scraper_text(text: str, response_char_limit: int) -> tuple[str, str] | None:
-    normalized = " ".join(str(text or "").split())
-    if len(normalized) < 8:
-        return None
-    snippet = normalized[:response_char_limit]
-    instruction = "Summarize the scraped page content into a concise, accurate answer."
-    response = snippet
-    return instruction, response
-
-
-
-def _iter_chunks(items: list, chunk_size: int):
-    for i in range(0, len(items), chunk_size):
-        yield items[i : i + chunk_size]
-
-def _scraper_reference_card() -> dict:
-    return {
-        "title": "Scraper Intake Endpoint",
-        "method": "POST",
-        "endpoint": "/dataset/intake/scraper",
-        "description": "Accepts normalized text payloads from external scrapers and imports them as training examples.",
-        "curl": (
-            "curl -X POST http://localhost:8000/dataset/intake/scraper\n"
-            "  -H 'Content-Type: application/json'\n"
-            "  -d '{\n"
-            "    \"dataset_name\": \"scraped-support-pages\",\n"
-            "    \"prompt\": \"Imported scraper text\",\n"
-            "    \"records\": [\n"
-            "      {\"text\": \"Reset your password from the account settings page...\", \"source_url\": \"https://example.com/help/reset-password\", \"title\": \"Password reset\"}\n"
-            "    ]\n"
-            "  }'"
-        ),
-        "payload_schema": {
-            "records": [{"text": "string", "source_url": "string?", "title": "string?", "metadata": "object?"}],
-            "dataset_name": "string?",
-            "dataset_description": "string?",
-            "model": "string?",
-            "prompt": "string (default: Imported scraper text)",
-            "dedupe_threshold": "float (0,1]",
-            "dedupe_against_existing": "boolean (default: true)",
-            "dedupe_within_payload": "boolean (default: true)",
-            "max_records": "int (default: 2000)",
-            "chunk_size": "int 1-500",
-            "response_char_limit": "int 32-8000",
-            "preview_only": "boolean",
-            "preview_limit": "int 1-100",
-        },
-    }
-
-
-def _load_existing_import_embeddings(session: Session) -> list[list[float]]:
-    embeddings: list[list[float]] = []
-    examples = session.exec(select(TrainingExample.embedding).where(TrainingExample.embedding.is_not(None))).all()
-    for embedding_raw in examples:
-        try:
-            parsed = json.loads(embedding_raw)
-            if isinstance(parsed, list) and parsed:
-                embeddings.append([float(x) for x in parsed])
-        except (TypeError, ValueError, json.JSONDecodeError):
-            continue
-    return embeddings
-
-
-def _dataset_passes_score_filter(dataset: Dataset, min_score: float | None) -> bool:
-    if min_score is None:
-        return True
-    if not dataset.source_run_id:
-        return False
-    grading = get_latest_grading_result(dataset.source_run_id)
-    if not grading:
-        return False
-    try:
-        score = float(grading.get("score", 0))
-    except (TypeError, ValueError):
-        return False
-    return score >= min_score
-
-
-def _format_sharegpt(example: TrainingExample) -> dict:
-    return {
-        "conversations": [
-            {"from": "system", "value": "You are a helpful assistant."},
-            {"from": "human", "value": example.instruction},
-            {"from": "gpt", "value": example.response},
-        ]
-    }
-
-
-def _format_chatml(example: TrainingExample) -> dict:
-    return {
-        "messages": [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": example.instruction},
-            {"role": "assistant", "content": example.response},
-        ]
-    }
-
-
-def _format_alpaca(example: TrainingExample) -> dict:
-    return {
-        "instruction": example.instruction,
-        "input": "",
-        "output": example.response,
-    }
-
-
-def _serialize_export_record(example: TrainingExample, export_format: str) -> dict:
-    fmt = export_format.lower()
-    if fmt == "sharegpt":
-        return _format_sharegpt(example)
-    if fmt == "chatml":
-        return _format_chatml(example)
-    if fmt == "alpaca":
-        return _format_alpaca(example)
-    raise ValueError("export_format must be one of: sharegpt, chatml, alpaca")
-
-
-def _prepare_export_examples(
-    session: Session,
-    *,
-    dataset_ids: list[int],
-    min_score: float | None,
-    dedupe_pass: bool,
-    shuffle_examples: bool,
-    max_examples: int | None,
-) -> tuple[list[TrainingExample], dict]:
-    datasets = session.exec(select(Dataset).where(Dataset.id.in_(dataset_ids)).order_by(Dataset.id)).all()
-    found_ids = {dataset.id for dataset in datasets if dataset.id is not None}
-    missing_ids = [dataset_id for dataset_id in dataset_ids if dataset_id not in found_ids]
-    if missing_ids:
-        raise ValueError(f"Dataset IDs not found: {missing_ids}")
-
-    eligible_datasets = [dataset for dataset in datasets if _dataset_passes_score_filter(dataset, min_score)]
-    examples = session.exec(
-        select(TrainingExample).where(TrainingExample.dataset_id.in_([dataset.id for dataset in eligible_datasets]))
-    ).all() if eligible_datasets else []
-
-    stats = {
-        "dataset_count": len(datasets),
-        "eligible_dataset_count": len(eligible_datasets),
-        "score_filtered_dataset_count": len(datasets) - len(eligible_datasets),
-        "input_examples": len(examples),
-        "deduped_examples": 0,
-    }
-
-    if dedupe_pass:
-        deduped: list[TrainingExample] = []
-        existing_embeddings: list[list[float]] = []
-        for example in examples:
-            if example.embedding:
-                try:
-                    embedding_list = json.loads(example.embedding)
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    embedding_list = None
-            else:
-                embedding = get_embedding(example.instruction)
-                embedding_list = embedding.tolist() if hasattr(embedding, "tolist") else embedding
-            if not isinstance(embedding_list, list) or not embedding_list:
-                deduped.append(example)
-                continue
-            comparable = [existing for existing in existing_embeddings if len(existing) == len(embedding_list)]
-            if is_duplicate(embedding_list, comparable):
-                stats["deduped_examples"] += 1
-                continue
-            existing_embeddings.append(embedding_list)
-            deduped.append(example)
-        examples = deduped
-
-    if shuffle_examples:
-        random.shuffle(examples)
-    if max_examples is not None:
-        examples = examples[:max_examples]
-
-    stats["output_examples"] = len(examples)
-    return examples, stats
-
-
-def _write_jsonl(path: str, rows: list[dict]):
-    with open(path, "w", encoding="utf-8") as file:
-        for row in rows:
-            file.write(json.dumps(row, ensure_ascii=True) + "\n")
-
-
-def _export_artifact_dir() -> str:
-    base_dir = os.getenv("EXPORT_ARTIFACT_DIR", os.path.join(os.getcwd(), "exports"))
-    os.makedirs(base_dir, exist_ok=True)
-    return base_dir
-
-
-def _build_export_files(
-    *,
-    examples: list[TrainingExample],
-    export_format: str,
-    train_val_split: float | None,
-    base_name: str,
-) -> tuple[str, int, int]:
-    rows = [_serialize_export_record(example, export_format) for example in examples]
-    safe_base = base_name.replace(" ", "-")
-    artifact_dir = _export_artifact_dir()
-    if train_val_split is None:
-        filepath = os.path.join(artifact_dir, f"{safe_base}.jsonl")
-        _write_jsonl(filepath, rows)
-        return filepath, len(rows), 0
-
-    val_count = int(len(rows) * train_val_split)
-    train_count = len(rows) - val_count
-    train_rows = rows[:train_count]
-    val_rows = rows[train_count:]
-    train_path = os.path.join(artifact_dir, f"{safe_base}-train.jsonl")
-    val_path = os.path.join(artifact_dir, f"{safe_base}-val.jsonl")
-    _write_jsonl(train_path, train_rows)
-    _write_jsonl(val_path, val_rows)
-    zip_path = os.path.join(artifact_dir, f"{safe_base}-split.zip")
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.write(train_path, arcname=os.path.basename(train_path))
-        archive.write(val_path, arcname=os.path.basename(val_path))
-    return zip_path, len(train_rows), len(val_rows)
-
-
-def _run_export_request(session: Session, body: ExportRequest) -> tuple[str, ExportHistory, dict]:
-    dataset_ids = []
-    seen_ids: set[int] = set()
-    for dataset_id in body.dataset_ids:
-        if dataset_id in seen_ids:
-            continue
-        seen_ids.add(dataset_id)
-        dataset_ids.append(dataset_id)
-    if not dataset_ids:
-        raise ValueError("dataset_ids must contain at least one value.")
-    if body.train_val_split is not None and not (0 < body.train_val_split < 1):
-        raise ValueError("train_val_split must be between 0 and 1.")
-    if body.max_examples is not None and body.max_examples <= 0:
-        raise ValueError("max_examples must be greater than 0.")
-
-    examples, stats = _prepare_export_examples(
-        session,
-        dataset_ids=dataset_ids,
-        min_score=body.min_score,
-        dedupe_pass=body.dedupe_pass,
-        shuffle_examples=body.shuffle,
-        max_examples=body.max_examples,
-    )
-    if not examples:
-        raise ValueError("No examples available after export filtering.")
-
-    export_id = new_run_id()[:12]
-    output_path, train_count, val_count = _build_export_files(
-        examples=examples,
-        export_format=body.export_format,
-        train_val_split=body.train_val_split,
-        base_name=f"dataset-export-{export_id}",
-    )
-    history = ExportHistory(
-        status="completed",
-        export_format=body.export_format.lower(),
-        dataset_ids_json=json.dumps(dataset_ids),
-        options_json=json.dumps(
-            {
-                "min_score": body.min_score,
-                "dedupe_pass": body.dedupe_pass,
-                "shuffle": body.shuffle,
-                "train_val_split": body.train_val_split,
-                "max_examples": body.max_examples,
-            }
-        ),
-        output_filename=os.path.basename(output_path),
-        output_path=output_path,
-        total_examples=len(examples),
-        train_examples=train_count,
-        val_examples=val_count,
-    )
-    session.add(history)
-    session.commit()
-    session.refresh(history)
-    return output_path, history, stats
 
 
 def register_data_routes(router: APIRouter):
@@ -496,7 +38,7 @@ def register_data_routes(router: APIRouter):
             success=True,
             message="Intake reference loaded.",
             statusCode=200,
-            data={"cards": [_scraper_reference_card()]},
+            data={"cards": [scraper_reference_card()]},
         )
 
     @router.post("/intake/scraper")
@@ -518,62 +60,7 @@ def register_data_routes(router: APIRouter):
             if len(body.records) > body.max_records:
                 raise ValueError(f"records exceeds max_records ({body.max_records}). Split into smaller payloads.")
 
-            existing_embeddings = _load_existing_import_embeddings(session) if body.dedupe_against_existing else []
-            payload_embeddings: list[list[float]] = []
-            duplicate_records = 0
-            invalid_records = 0
-            imported_examples: list[TrainingExample] = []
-
-            for chunk in _iter_chunks(body.records, body.chunk_size):
-                for record in chunk:
-                    parsed = _normalize_scraper_text(record.text, body.response_char_limit)
-                    if not parsed:
-                        invalid_records += 1
-                        continue
-                    instruction, response = parsed
-                    if record.source_url or record.title:
-                        context_parts = []
-                        if record.title:
-                            context_parts.append(f"Title: {record.title}")
-                        if record.source_url:
-                            context_parts.append(f"Source: {record.source_url}")
-                        if context_parts:
-                            instruction = f"{instruction}\n\n" + "\n".join(context_parts)
-
-                    embedding = get_embedding(instruction)
-                    embedding_list = embedding.tolist() if hasattr(embedding, "tolist") else embedding
-                    if not isinstance(embedding_list, list) or not embedding_list:
-                        invalid_records += 1
-                        continue
-
-                    comparable_embeddings: list[list[float]] = []
-                    if body.dedupe_against_existing:
-                        comparable_embeddings.extend(
-                            existing for existing in existing_embeddings if len(existing) == len(embedding_list)
-                        )
-                    if body.dedupe_within_payload:
-                        comparable_embeddings.extend(
-                            existing for existing in payload_embeddings if len(existing) == len(embedding_list)
-                        )
-
-                    if comparable_embeddings and is_duplicate(
-                        embedding_list,
-                        comparable_embeddings,
-                        threshold=body.dedupe_threshold,
-                    ):
-                        duplicate_records += 1
-                        continue
-
-                    if body.dedupe_within_payload:
-                        payload_embeddings.append(embedding_list)
-                    imported_examples.append(
-                        TrainingExample(
-                            prompt=body.prompt,
-                            instruction=instruction,
-                            response=response,
-                            embedding=json.dumps(embedding_list),
-                        )
-                    )
+            imported_examples, duplicate_records, invalid_records = build_scraper_examples(session, body)
 
             if body.preview_only:
                 return response_builder(
@@ -1020,7 +507,7 @@ def register_data_routes(router: APIRouter):
     @router.post("/export")
     def export_datasets(body: ExportRequest, session: Session = Depends(get_session)):
         try:
-            output_path, history, stats = _run_export_request(session, body)
+            output_path, history, stats = run_export_request(session, body)
             return FileResponse(
                 output_path,
                 filename=history.output_filename or os.path.basename(output_path),
@@ -1123,7 +610,7 @@ def register_data_routes(router: APIRouter):
                 train_val_split=options.get("train_val_split"),
                 max_examples=options.get("max_examples"),
             )
-            output_path, new_history, stats = _run_export_request(session, rerun_request)
+            output_path, new_history, stats = run_export_request(session, rerun_request)
             return FileResponse(
                 output_path,
                 filename=new_history.output_filename or os.path.basename(output_path),
@@ -1162,45 +649,18 @@ def register_data_routes(router: APIRouter):
             if body.preview_limit <= 0 or body.preview_limit > 100:
                 raise ValueError("preview_limit must be in the range 1-100.")
 
-            payload = await _fetch_external_payload(body)
-            records = _extract_records(payload)
-            detected_format = _detect_format(records, body.field_mapper)
-            normalized_rows, invalid_records = _normalize_import_records(
-                records,
-                detected_format=detected_format,
-                field_mapper=body.field_mapper,
+            if body.chunk_size <= 0 or body.chunk_size > 500:
+                raise ValueError("chunk_size must be in the range 1-500.")
+            payload = await fetch_external_payload(body)
+            detected_format, records, normalized_rows, invalid_records = normalize_external_records(body, payload)
+            if len(records) > body.max_records:
+                raise ValueError(f"records exceeds max_records ({body.max_records}). Split into smaller payloads.")
+            imported_examples, duplicate_records, invalid_records = build_external_examples(
+                session,
+                body,
+                normalized_rows,
+                initial_invalid_records=invalid_records,
             )
-
-            existing_embeddings = _load_existing_import_embeddings(session)
-            duplicate_records = 0
-            imported_examples: list[TrainingExample] = []
-            for row in normalized_rows:
-                instruction = str(row["instruction"]).strip()
-                response = str(row["response"]).strip()
-                if len(instruction) < 2 or len(response) < 2:
-                    invalid_records += 1
-                    continue
-                embedding = get_embedding(instruction)
-                embedding_list = embedding.tolist() if hasattr(embedding, "tolist") else embedding
-                comparable_embeddings = [
-                    existing for existing in existing_embeddings if len(existing) == len(embedding_list)
-                ]
-                if is_duplicate(
-                    embedding_list,
-                    comparable_embeddings,
-                    threshold=body.dedupe_threshold,
-                ):
-                    duplicate_records += 1
-                    continue
-                existing_embeddings.append(embedding_list)
-                imported_examples.append(
-                    TrainingExample(
-                        prompt=body.prompt,
-                        instruction=instruction,
-                        response=response,
-                        embedding=json.dumps(embedding_list),
-                    )
-                )
 
             if body.preview_only:
                 return response_builder(
@@ -1236,9 +696,9 @@ def register_data_routes(router: APIRouter):
                 source_url=body.url,
                 method=body.method.upper(),
                 dataset_name=body.dataset_name,
-                request_headers_json=_safe_json_dump(body.headers),
-                request_body_json=_safe_json_dump(body.body),
-                field_mapper_json=_safe_json_dump(body.field_mapper),
+                request_headers_json=safe_json_dump(body.headers),
+                request_body_json=safe_json_dump(body.body),
+                field_mapper_json=safe_json_dump(body.field_mapper),
                 prompt=body.prompt,
                 source_label=body.source_label,
             )
