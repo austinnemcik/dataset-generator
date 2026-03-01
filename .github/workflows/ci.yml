@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite:///./ci.db
+      OPENROUTER_API_KEY: test-key
+      LOG_TO_STDOUT: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+      - name: Lint
+        run: ruff check config.py database.py logger.py main.py routes/data_processing.py routes/dataset_data_routes.py services tests
+      - name: Run tests
+        run: pytest -q
+      - name: Compile check
+        run: python -m py_compile config.py database.py logger.py main.py routes/data_processing.py routes/dataset_data_routes.py services/export_service.py services/import_service.py routes/dataset_models.py migrations/env.py migrations/versions/*.py
