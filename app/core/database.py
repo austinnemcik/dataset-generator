@@ -157,3 +157,20 @@ class SourceChunk(SQLModel, table=True):
     document: "SourceDocument" = Relationship(back_populates="chunks")
 
 
+class ClientSettings(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    default_model: str = "z-ai/glm-5"
+    grading_model: str = "google/gemini-2.5-flash"
+    naming_model: str = "google/gemini-2.5-flash"
+    threshold: float = 0.8
+    min_grading_score: float = 8.0
+    min_response_char_length: int = 40
+    max_grading_json_retries: int = 2
+    max_naming_json_retries: int = 2
+    max_low_quality_retries: int = 1
+    max_generation_retries: int = 1
+    min_save_ratio: float = 0.8
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+

@@ -1,28 +1,9 @@
-from fastapi.responses import StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 from sqlmodel import Session, select
 
 from app.core.database import Dataset, SourceDocument, TrainingExample
 from app.core.generics import get_latest_grading_result, get_run_costs
 from app.core.utils import parse_embedding, parse_last_event_index, sse_message
-
-try:
-    from sse_starlette.sse import EventSourceResponse
-except ImportError:
-    class EventSourceResponse(StreamingResponse):
-        def __init__(self, content, status_code: int = 200, headers: dict | None = None):
-            merged_headers = {
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            }
-            if headers:
-                merged_headers.update(headers)
-            super().__init__(
-                content=content,
-                status_code=status_code,
-                media_type="text/event-stream",
-                headers=merged_headers,
-            )
 
 
 def _parse_source_material_items(
