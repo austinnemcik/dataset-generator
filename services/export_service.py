@@ -5,11 +5,11 @@ import zipfile
 
 from sqlmodel import Session, select
 
-from agent import get_embedding, is_duplicate
-from config import get_settings
-from database import Dataset, ExportHistory, TrainingExample
-from generics import get_latest_grading_result, new_run_id
+from app.core.config import get_settings
+from app.core.database import Dataset, ExportHistory, TrainingExample
+from app.core.generics import get_latest_grading_result, new_run_id
 from routes.dataset_models import ExportRequest
+from services.embedding_service import embed_text, is_semantic_duplicate, parse_embedding_json
 
 
 def _dataset_passes_score_filter(dataset: Dataset, min_score: float | None) -> bool:
@@ -98,19 +98,11 @@ def _prepare_export_examples(
         deduped: list[TrainingExample] = []
         existing_embeddings: list[list[float]] = []
         for example in examples:
-            if example.embedding:
-                try:
-                    embedding_list = json.loads(example.embedding)
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    embedding_list = None
-            else:
-                embedding = get_embedding(example.instruction)
-                embedding_list = embedding.tolist() if hasattr(embedding, "tolist") else embedding
-            if not isinstance(embedding_list, list) or not embedding_list:
+            embedding_list = parse_embedding_json(example.embedding) if example.embedding else embed_text(example.instruction)
+            if embedding_list is None:
                 deduped.append(example)
                 continue
-            comparable = [existing for existing in existing_embeddings if len(existing) == len(embedding_list)]
-            if is_duplicate(embedding_list, comparable):
+            if is_semantic_duplicate(embedding_list, existing_embeddings):
                 stats["deduped_examples"] += 1
                 continue
             existing_embeddings.append(embedding_list)
@@ -224,3 +216,5 @@ def run_export_request(session: Session, body: ExportRequest) -> tuple[str, Expo
     session.commit()
     session.refresh(history)
     return output_path, history, stats
+
+

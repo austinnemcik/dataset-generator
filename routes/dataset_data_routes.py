@@ -1,16 +1,16 @@
 import json
 import os
-import tempfile
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 import httpx
 from fastapi.responses import FileResponse, JSONResponse
 from funkybob import RandomNameGenerator
 from sqlmodel import Session, select
 
-from agent import generate_dataset, get_embedding, is_duplicate, save_responses
-from database import Dataset, ExportHistory, ImportHistory, TrainingExample, get_session
-from generics import TimedLabel, new_run_id, response_builder, timer
+from agent import generate_dataset, save_responses
+from agent.grading import CATEGORY_TAXONOMY
+from app.core.database import Dataset, ExportHistory, ImportHistory, SourceDocument, get_session
+from app.core.generics import new_run_id, response_builder
 from routes.dataset_models import (
     ExportRequest,
     ExternalImportRequest,
@@ -19,18 +19,38 @@ from routes.dataset_models import (
     ScraperIntakeRequest,
 )
 from routes.dataset_shared import resolve_source_material
-from routes.data_processing import safe_json_dump, scraper_reference_card
-from services.export_service import run_export_request
-from services.import_service import (
-    build_external_examples,
-    build_scraper_examples,
-    fetch_external_payload,
-    normalize_external_records,
+from routes.data_processing import scraper_reference_card, upload_reference_card
+from services.data_service import (
+    export_single_dataset,
+    get_export_history_rows,
+    get_import_history_rows,
+    import_example_file_workflow,
+    import_external_dataset_workflow,
+    ingest_examples,
+    store_source_document_workflow,
 )
-import logger
+from services.export_service import run_export_request
+from services.import_service import build_scraper_examples
+import app.core.logger as logger
+
+
+def _log_route_error(event: str, exc: Exception, *, log_type: str = "ERROR", **fields):
+    logger.log_event(event, log_type, error=str(exc), error_type=type(exc).__name__, **fields)
 
 
 def register_data_routes(router: APIRouter):
+
+    @router.get("/categories")
+    def list_dataset_categories():
+        return response_builder(
+            success=True,
+            message="Successfully returned dataset categories.",
+            statusCode=200,
+            data={
+                "categories": [{"value": category, "label": category.replace("_", " ").title()} for category in CATEGORY_TAXONOMY],
+                "count": len(CATEGORY_TAXONOMY),
+            },
+        )
 
     @router.get("/intake/reference")
     def intake_reference_card():
@@ -38,8 +58,187 @@ def register_data_routes(router: APIRouter):
             success=True,
             message="Intake reference loaded.",
             statusCode=200,
-            data={"cards": [scraper_reference_card()]},
+            data={"cards": [scraper_reference_card(), upload_reference_card()]},
         )
+
+    @router.post("/intake/upload")
+    async def intake_upload_file(
+        file: UploadFile = File(...),
+        intake_mode: str = Form(...),
+        dataset_name: str | None = Form(default=None),
+        dataset_description: str | None = Form(default=None),
+        model: str | None = Form(default=None),
+        prompt: str = Form(default="Imported file dataset"),
+        dedupe_threshold: float = Form(default=0.8),
+        dedupe_against_existing: bool = Form(default=True),
+        dedupe_within_payload: bool = Form(default=True),
+        chunk_char_size: int = Form(default=2000),
+        chunk_overlap: int = Form(default=200),
+        session: Session = Depends(get_session),
+    ):
+        try:
+            if not file.filename:
+                raise ValueError("Uploaded file must include a filename.")
+            contents = await file.read()
+            if not contents:
+                raise ValueError("Uploaded file is empty.")
+
+            normalized_mode = intake_mode.strip().lower()
+            if normalized_mode == "examples":
+                result = import_example_file_workflow(
+                    session,
+                    filename=file.filename,
+                    contents=contents,
+                    dataset_name=dataset_name,
+                    dataset_description=dataset_description,
+                    model=model,
+                    prompt=prompt,
+                    dedupe_threshold=dedupe_threshold,
+                    dedupe_against_existing=dedupe_against_existing,
+                    dedupe_within_payload=dedupe_within_payload,
+                )
+                return response_builder(
+                    success=True,
+                    message="Successfully imported uploaded examples as dataset.",
+                    statusCode=201,
+                    data={"intake_mode": normalized_mode, **result},
+                )
+
+            if normalized_mode not in {"source_material", "pretraining_data"}:
+                raise ValueError("intake_mode must be one of: examples, source_material, pretraining_data.")
+            if chunk_char_size <= 0:
+                raise ValueError("chunk_char_size must be greater than 0.")
+            if chunk_overlap < 0 or chunk_overlap >= chunk_char_size:
+                raise ValueError("chunk_overlap must be non-negative and smaller than chunk_char_size.")
+
+            result = store_source_document_workflow(
+                session,
+                filename=file.filename,
+                contents=contents,
+                chunk_char_size=chunk_char_size,
+                chunk_overlap=chunk_overlap,
+            )
+            return response_builder(
+                success=True,
+                message="Successfully stored uploaded source document.",
+                statusCode=201,
+                data={"intake_mode": normalized_mode, **result},
+            )
+        except ValueError as e:
+            session.rollback()
+            _log_route_error("file_upload.validation_failed", e, filename=file.filename, intake_mode=intake_mode)
+            return response_builder(success=False, message=str(e), statusCode=400)
+        except Exception as e:
+            session.rollback()
+            _log_route_error("file_upload.unexpected_error", e, filename=file.filename, intake_mode=intake_mode)
+            return response_builder(
+                success=False,
+                message="An unexpected error occurred while ingesting uploaded file.",
+                statusCode=500,
+            )
+
+    @router.get("/documents")
+    def list_source_documents(
+        limit: int = Query(default=25, ge=1, le=200),
+        session: Session = Depends(get_session),
+    ):
+        try:
+            documents = session.exec(
+                select(SourceDocument).order_by(SourceDocument.created_at.desc()).limit(limit)
+            ).all()
+            rows = [
+                {
+                    "id": document.id,
+                    "name": document.name,
+                    "file_type": document.file_type,
+                    "char_count": document.char_count,
+                    "chunk_count": len(document.chunks),
+                    "created_at": document.created_at.isoformat() if document.created_at else None,
+                    "source_material_ref": f"doc:{document.id}",
+                }
+                for document in documents
+            ]
+            return response_builder(
+                success=True,
+                message="Successfully returned source documents.",
+                statusCode=200,
+                data={"documents": rows, "count": len(rows)},
+            )
+        except Exception as e:
+            _log_route_error("source_document_list.unexpected_error", e, limit=limit)
+            return response_builder(
+                success=False,
+                message="An error occurred while fetching source documents.",
+                statusCode=500,
+            )
+
+    @router.get("/documents/{document_id}")
+    def get_source_document(document_id: int, session: Session = Depends(get_session)):
+        try:
+            document = session.get(SourceDocument, document_id)
+            if not document:
+                raise ValueError("Source document not found.")
+            return response_builder(
+                success=True,
+                message="Successfully returned source document.",
+                statusCode=200,
+                data={
+                    "document": {
+                        "id": document.id,
+                        "name": document.name,
+                        "file_type": document.file_type,
+                        "char_count": document.char_count,
+                        "chunk_count": len(document.chunks),
+                        "created_at": document.created_at.isoformat() if document.created_at else None,
+                        "source_material_ref": f"doc:{document.id}",
+                    },
+                    "chunks": [
+                        {
+                            "id": chunk.id,
+                            "chunk_index": chunk.chunk_index,
+                            "char_count": chunk.char_count,
+                            "content": chunk.content,
+                        }
+                        for chunk in sorted(document.chunks, key=lambda item: item.chunk_index)
+                    ],
+                },
+            )
+        except ValueError as e:
+            _log_route_error("source_document_get.validation_failed", e, document_id=document_id)
+            return response_builder(success=False, message=str(e), statusCode=404)
+        except Exception as e:
+            _log_route_error("source_document_get.unexpected_error", e, document_id=document_id)
+            return response_builder(
+                success=False,
+                message="An error occurred while fetching source document.",
+                statusCode=500,
+            )
+
+    @router.delete("/documents/{document_id}")
+    def delete_source_document(document_id: int, session: Session = Depends(get_session)):
+        try:
+            document = session.get(SourceDocument, document_id)
+            if not document:
+                raise ValueError("Source document not found.")
+            document_name = document.name
+            session.delete(document)
+            session.commit()
+            return response_builder(
+                success=True,
+                message=f"Successfully removed source document {document_name}",
+                statusCode=200,
+            )
+        except ValueError as e:
+            _log_route_error("source_document_delete.validation_failed", e, document_id=document_id)
+            return response_builder(success=False, message=str(e), statusCode=404)
+        except Exception as e:
+            session.rollback()
+            _log_route_error("source_document_delete.unexpected_error", e, document_id=document_id)
+            return response_builder(
+                success=False,
+                message="An error occurred while removing source document.",
+                statusCode=500,
+            )
 
     @router.post("/intake/scraper")
     def intake_scraper_text(
@@ -47,19 +246,6 @@ def register_data_routes(router: APIRouter):
         session: Session = Depends(get_session),
     ):
         try:
-            if body.dedupe_threshold <= 0 or body.dedupe_threshold > 1:
-                raise ValueError("dedupe_threshold must be in the range (0, 1].")
-            if body.preview_limit <= 0 or body.preview_limit > 100:
-                raise ValueError("preview_limit must be in the range 1-100.")
-            if body.chunk_size <= 0 or body.chunk_size > 500:
-                raise ValueError("chunk_size must be in the range 1-500.")
-            if body.response_char_limit < 32 or body.response_char_limit > 8000:
-                raise ValueError("response_char_limit must be in the range 32-8000.")
-            if not body.records:
-                raise ValueError("records must contain at least one item.")
-            if len(body.records) > body.max_records:
-                raise ValueError(f"records exceeds max_records ({body.max_records}). Split into smaller payloads.")
-
             imported_examples, duplicate_records, invalid_records = build_scraper_examples(session, body)
 
             if body.preview_only:
@@ -114,11 +300,11 @@ def register_data_routes(router: APIRouter):
             )
         except ValueError as e:
             session.rollback()
-            logger.saveToLog(f"[intake_scraper_text] Validation failed: {e}", "ERROR")
+            _log_route_error("scraper_intake.validation_failed", e)
             return response_builder(success=False, message=str(e), statusCode=400)
         except Exception as e:
             session.rollback()
-            logger.saveToLog(f"[intake_scraper_text] Unexpected error: {e}", "ERROR")
+            _log_route_error("scraper_intake.unexpected_error", e)
             return response_builder(
                 success=False,
                 message="An unexpected error occurred while importing scraper text.",
@@ -128,156 +314,20 @@ def register_data_routes(router: APIRouter):
     @router.post("/ingest")
     def ingest_example(body: IngestExamples, session: Session = Depends(get_session)):
         try:
-            incoming_count = len(body.example) if body.example else 0
-            dataset_name = body.dataset_name or str(RandomNameGenerator())
-            dataset_description = body.dataset_description
-            dataset_model = body.model
-            source_run_id = body.run_id
-            generation_cost = float(body.generation_cost or 0.0)
-            grading_cost = float(body.grading_cost or 0.0)
-            total_cost = float(body.total_cost or 0.0)
-            errors = 0
-            example_amount = 0
-            too_short_count = 0
-            duplicate_count = 0
-            processing_error_count = 0
-            kept_count = 0
-            preview_rejects: list[str] = []
-
-            logger.saveToLog(
-                (
-                    "[ingest_example] Starting ingest "
-                    f"dataset_name={dataset_name!r} "
-                    f"model={dataset_model!r} "
-                    f"incoming_examples={incoming_count} "
-                    f"prompt_len={len(body.prompt or '')}"
-                ),
-                "INFO",
-            )
-
-            if source_run_id:
-                existing_dataset = session.exec(
-                    select(Dataset).where(Dataset.source_run_id == source_run_id)
-                ).first()
-                if existing_dataset:
-                    logger.saveToLog(
-                        (
-                            "[ingest_example] Reusing existing ingest result "
-                            f"dataset_id={existing_dataset.id} "
-                            f"source_run_id={source_run_id}"
-                        ),
-                        "INFO",
-                    )
-                    return response_builder(
-                        success=True,
-                        message="Dataset already existed for this run.",
-                        errors=0,
-                        count=len(existing_dataset.examples),
-                        statusCode=200,
-                        data={"dataset_id": existing_dataset.id, "reused": True},
-                    )
-
-            dataset = Dataset(
-                name=dataset_name,
-                description=dataset_description,
-                model=dataset_model,
-                source_run_id=source_run_id,
-                generation_cost=generation_cost,
-                grading_cost=grading_cost,
-                total_cost=total_cost,
-                examples=[],
-            )
-            existing_embeddings = []
-            if not body.example:
-                raise ValueError("No examples provided in ingest payload")
-
-            with timer(label=TimedLabel.INGEST_REQUEST):
-                for idx, ex in enumerate(body.example):
-                    try:
-                        prompt = body.prompt
-                        instruction = ex.instruction
-                        response = ex.response
-                        if len(instruction) < 2 or len(response) < 2 or len(prompt) < 2:
-                            errors += 1
-                            too_short_count += 1
-                            if len(preview_rejects) < 5:
-                                preview_rejects.append(
-                                    f"idx={idx}:short instruction_len={len(instruction)} response_len={len(response)} prompt_len={len(prompt)}"
-                                )
-                            logger.saveToLog(
-                                "Discarding example with reason: BAD RESPONSE.. continuing",
-                                "WARNING",
-                            )
-                            continue
-                        embedding = get_embedding(ex.instruction)
-                        embedding_list = embedding.tolist() if hasattr(embedding, "tolist") else embedding
-                        embedding_str = json.dumps(embedding_list)
-                        if is_duplicate(embedding_list, existing_embeddings):
-                            errors += 1
-                            duplicate_count += 1
-                            if len(preview_rejects) < 5:
-                                preview_rejects.append(f"idx={idx}:duplicate")
-                            continue
-                        existing_embeddings.append(embedding_list)
-                        dataset.examples.append(
-                            TrainingExample(
-                                prompt=prompt,
-                                instruction=instruction,
-                                response=response,
-                                embedding=embedding_str,
-                            )
-                        )
-                        example_amount += 1
-                        kept_count += 1
-                    except Exception as e:
-                        errors += 1
-                        processing_error_count += 1
-                        if len(preview_rejects) < 5:
-                            preview_rejects.append(
-                                f"idx={idx}:processing_error type={type(e).__name__} message={str(e)[:120]}"
-                            )
-                        logger.saveToLog(
-                            f"[ingest_example] Example processing failed idx={idx} type={type(e).__name__} error={e}",
-                            "ERROR",
-                        )
-                        continue
-
-            if len(dataset.examples) < 1:
-                logger.saveToLog(
-                    (
-                        "[ingest_example] Rejecting ingest with zero survivors "
-                        f"dataset_name={dataset_name!r} incoming={incoming_count} kept={kept_count} "
-                        f"too_short={too_short_count} duplicates={duplicate_count} "
-                        f"processing_errors={processing_error_count} preview_rejects={preview_rejects}"
-                    ),
-                    "WARNING",
-                )
-                raise ValueError("No valid examples found after ingest validation")
-
-            session.add(dataset)
-            session.commit()
-            logger.saveToLog(
-                (
-                    "[ingest_example] Ingest committed "
-                    f"dataset_id={dataset.id} dataset_name={dataset.name!r} incoming={incoming_count} "
-                    f"kept={kept_count} too_short={too_short_count} duplicates={duplicate_count} "
-                    f"processing_errors={processing_error_count} errors={errors}"
-                ),
-                "INFO",
-            )
+            result = ingest_examples(session, body)
             return response_builder(
                 success=True,
-                message="Dataset successfully parsed and saved to database.",
-                errors=errors,
-                count=example_amount,
-                statusCode=201,
-                data={"dataset_id": dataset.id, "reused": False},
+                message=result["message"],
+                errors=result["errors"],
+                count=result["count"],
+                statusCode=200 if result["reused"] else 201,
+                data={"dataset_id": result["dataset_id"], "reused": result["reused"]},
             )
         except ValueError as e:
-            logger.saveToLog(f"[ingest_example] Validation failed: {e}", "ERROR")
+            _log_route_error("ingest.validation_failed", e, run_id=body.run_id)
             return response_builder(success=False, message=str(e), statusCode=400)
         except Exception as e:
-            logger.saveToLog(f"[ingest_example] Unexpected error: {e}", "ERROR")
+            _log_route_error("ingest.unexpected_error", e, run_id=body.run_id)
             return response_builder(
                 success=False,
                 message="An error occurred while ingesting examples.",
@@ -287,35 +337,13 @@ def register_data_routes(router: APIRouter):
     @router.get("/{dataset_id}/export")
     def export_dataset(dataset_id: int, session: Session = Depends(get_session)):
         try:
-            dataset = session.get(Dataset, dataset_id)
-            if not dataset:
-                raise ValueError("No dataset found for this ID")
-
-            examples = session.exec(
-                select(TrainingExample).where(TrainingExample.dataset_id == dataset.id)
-            ).all()
-
-            lines = []
-            for example in examples:
-                formatted = {
-                    "conversations": [
-                        {"from": "system", "value": "You are a helpful assistant."},
-                        {"from": "human", "value": example.instruction},
-                        {"from": "gpt", "value": example.response},
-                    ]
-                }
-                lines.append(json.dumps(formatted))
-
-            jsonl_content = "\n".join(lines)
-            filepath = os.path.join(tempfile.gettempdir(), f"{dataset.name}.jsonl")
-            with open(filepath, "w", encoding="utf-8") as file:
-                file.write(jsonl_content)
-            return FileResponse(filepath, filename=f"{dataset.name}.jsonl")
+            filepath, filename = export_single_dataset(session, dataset_id)
+            return FileResponse(filepath, filename=filename)
         except ValueError as e:
-            logger.saveToLog(f"[export_dataset] Validation failed: {e}", "ERROR")
+            _log_route_error("dataset_export.validation_failed", e, dataset_id=dataset_id)
             return response_builder(success=False, message=str(e), statusCode=404)
         except Exception as e:
-            logger.saveToLog(f"[export_dataset] Unexpected error: {e}", "ERROR")
+            _log_route_error("dataset_export.unexpected_error", e, dataset_id=dataset_id)
             return response_builder(
                 success=False,
                 message="An error occurred while exporting dataset.",
@@ -335,6 +363,7 @@ def register_data_routes(router: APIRouter):
                     {"name": dataset.name},
                     {"description": dataset.description},
                     {"id": dataset.id},
+                    {"category": dataset.category},
                     {"model": dataset.model},
                     {"generation_cost": dataset.generation_cost},
                     {"grading_cost": dataset.grading_cost},
@@ -392,6 +421,7 @@ def register_data_routes(router: APIRouter):
                     {
                         "id": ds.id,
                         "name": ds.name,
+                        "category": ds.category,
                         "model": ds.model,
                         "generation_cost": round(float(ds.generation_cost or 0.0), 8),
                         "grading_cost": round(float(ds.grading_cost or 0.0), 8),
@@ -414,7 +444,7 @@ def register_data_routes(router: APIRouter):
                 }
             )
         except Exception as e:
-            logger.saveToLog(f"[cost_summary] Unexpected error: {e}", "ERROR")
+            _log_route_error("cost_summary.unexpected_error", e, limit=limit, model=model)
             return response_builder(
                 success=False,
                 message="An error occurred while building cost summary.",
@@ -464,10 +494,10 @@ def register_data_routes(router: APIRouter):
             )
             return response_builder(success=True, message="Successfully generated dataset", statusCode=201)
         except ValueError as e:
-            logger.saveToLog(f"[get_dataset] Validation failed: {e}", "ERROR")
+            _log_route_error("dataset_generate.validation_failed", e, topic=topic, run_id=run_id)
             return response_builder(success=False, message=str(e), statusCode=400)
         except Exception as e:
-            logger.saveToLog(f"[get_dataset] Unexpected generation error: {e}", "ERROR")
+            _log_route_error("dataset_generate.unexpected_error", e, topic=topic, run_id=run_id)
             return response_builder(
                 success=False,
                 message="An unexpected error occurred while generating dataset.",
@@ -494,10 +524,10 @@ def register_data_routes(router: APIRouter):
                 statusCode=200,
             )
         except ValueError as e:
-            logger.saveToLog(f"[delete_dataset] Validation failed: {e}", "ERROR")
+            _log_route_error("dataset_delete.validation_failed", e, dataset_id=dataset_id)
             return response_builder(success=False, message=str(e), statusCode=404)
         except Exception as e:
-            logger.saveToLog(f"[delete_dataset] Unexpected error: {e}", "ERROR")
+            _log_route_error("dataset_delete.unexpected_error", e, dataset_id=dataset_id)
             return response_builder(
                 success=False,
                 message="An error occurred while removing dataset.",
@@ -520,10 +550,10 @@ def register_data_routes(router: APIRouter):
                 },
             )
         except ValueError as e:
-            logger.saveToLog(f"[export_datasets] Validation failed: {e}", "ERROR")
+            _log_route_error("dataset_export_batch.validation_failed", e)
             return response_builder(success=False, message=str(e), statusCode=400)
         except Exception as e:
-            logger.saveToLog(f"[export_datasets] Unexpected error: {e}", "ERROR")
+            _log_route_error("dataset_export_batch.unexpected_error", e)
             return response_builder(
                 success=False,
                 message="An unexpected error occurred while exporting datasets.",
@@ -533,34 +563,18 @@ def register_data_routes(router: APIRouter):
     @router.get("/exports/history")
     def export_history(limit: int = Query(default=25, ge=1, le=200), session: Session = Depends(get_session)):
         try:
-            rows = session.exec(select(ExportHistory).order_by(ExportHistory.created_at.desc()).limit(limit)).all()
+            rows = get_export_history_rows(session, limit)
             return response_builder(
                 success=True,
                 message="Successfully returned export history.",
                 statusCode=200,
                 data={
-                    "exports": [
-                        {
-                            "id": row.id,
-                            "status": row.status,
-                            "export_format": row.export_format,
-                            "dataset_ids": json.loads(row.dataset_ids_json),
-                            "options": json.loads(row.options_json) if row.options_json else {},
-                            "output_filename": row.output_filename,
-                            "has_artifact": bool(row.output_path and os.path.exists(row.output_path)),
-                            "total_examples": row.total_examples,
-                            "train_examples": row.train_examples,
-                            "val_examples": row.val_examples,
-                            "error": row.error,
-                            "created_at": row.created_at.isoformat() if row.created_at else None,
-                        }
-                        for row in rows
-                    ],
+                    "exports": rows,
                     "count": len(rows),
                 },
             )
         except Exception as e:
-            logger.saveToLog(f"[export_history] Unexpected error: {e}", "ERROR")
+            _log_route_error("export_history.unexpected_error", e, limit=limit)
             return response_builder(
                 success=False,
                 message="An error occurred while fetching export history.",
@@ -581,13 +595,13 @@ def register_data_routes(router: APIRouter):
                 media_type="application/octet-stream",
             )
         except ValueError as e:
-            logger.saveToLog(f"[download_export_artifact] Validation failed: {e}", "ERROR")
+            _log_route_error("export_download.validation_failed", e, export_id=export_id)
             return response_builder(success=False, message=str(e), statusCode=404)
         except FileNotFoundError as e:
-            logger.saveToLog(f"[download_export_artifact] Missing artifact: {e}", "ERROR")
+            _log_route_error("export_download.missing_artifact", e, export_id=export_id)
             return response_builder(success=False, message=str(e), statusCode=410)
         except Exception as e:
-            logger.saveToLog(f"[download_export_artifact] Unexpected error: {e}", "ERROR")
+            _log_route_error("export_download.unexpected_error", e, export_id=export_id)
             return response_builder(
                 success=False,
                 message="An error occurred while downloading export artifact.",
@@ -624,10 +638,10 @@ def register_data_routes(router: APIRouter):
                 },
             )
         except ValueError as e:
-            logger.saveToLog(f"[rerun_export] Validation failed: {e}", "ERROR")
+            _log_route_error("export_rerun.validation_failed", e, export_id=export_id)
             return response_builder(success=False, message=str(e), statusCode=404)
         except Exception as e:
-            logger.saveToLog(f"[rerun_export] Unexpected error: {e}", "ERROR")
+            _log_route_error("export_rerun.unexpected_error", e, export_id=export_id)
             return response_builder(
                 success=False,
                 message="An error occurred while rerunning export.",
@@ -639,131 +653,28 @@ def register_data_routes(router: APIRouter):
         body: ExternalImportRequest,
         session: Session = Depends(get_session),
     ):
-        history: ImportHistory | None = None
-
         try:
-            if body.timeout_seconds <= 0:
-                raise ValueError("timeout_seconds must be greater than 0.")
-            if body.dedupe_threshold <= 0 or body.dedupe_threshold > 1:
-                raise ValueError("dedupe_threshold must be in the range (0, 1].")
-            if body.preview_limit <= 0 or body.preview_limit > 100:
-                raise ValueError("preview_limit must be in the range 1-100.")
-
-            if body.chunk_size <= 0 or body.chunk_size > 500:
-                raise ValueError("chunk_size must be in the range 1-500.")
-            payload = await fetch_external_payload(body)
-            detected_format, records, normalized_rows, invalid_records = normalize_external_records(body, payload)
-            if len(records) > body.max_records:
-                raise ValueError(f"records exceeds max_records ({body.max_records}). Split into smaller payloads.")
-            imported_examples, duplicate_records, invalid_records = build_external_examples(
-                session,
-                body,
-                normalized_rows,
-                initial_invalid_records=invalid_records,
-            )
-
-            if body.preview_only:
+            result = await import_external_dataset_workflow(session, body)
+            if result["preview_only"]:
                 return response_builder(
                     success=True,
                     message="Successfully previewed external dataset import.",
                     statusCode=200,
-                    data={
-                        "preview_only": True,
-                        "detected_format": detected_format,
-                        "fetched_records": len(records),
-                        "normalized_records": len(normalized_rows),
-                        "importable_records": len(imported_examples),
-                        "duplicate_records": duplicate_records,
-                        "invalid_records": invalid_records,
-                        "chunk_size": body.chunk_size,
-                        "dedupe_against_existing": body.dedupe_against_existing,
-                        "dedupe_within_payload": body.dedupe_within_payload,
-                        "sample_records": [
-                            {
-                                "instruction": example.instruction,
-                                "response": example.response,
-                            }
-                            for example in imported_examples[: body.preview_limit]
-                        ],
-                    },
+                    data=result,
                 )
-
-            if not imported_examples:
-                raise ValueError("No importable records remained after normalization and deduplication.")
-
-            history = ImportHistory(
-                status="running",
-                source_url=body.url,
-                method=body.method.upper(),
-                dataset_name=body.dataset_name,
-                request_headers_json=safe_json_dump(body.headers),
-                request_body_json=safe_json_dump(body.body),
-                field_mapper_json=safe_json_dump(body.field_mapper),
-                prompt=body.prompt,
-                source_label=body.source_label,
-            )
-            session.add(history)
-            session.commit()
-            session.refresh(history)
-
-            dataset = Dataset(
-                name=body.dataset_name or str(RandomNameGenerator()),
-                description=body.dataset_description,
-                model=body.model,
-                examples=imported_examples,
-            )
-            session.add(dataset)
-            session.flush()
-
-            history.status = "completed"
-            history.detected_format = detected_format
-            history.dataset_id = dataset.id
-            history.dataset_name = dataset.name
-            history.fetched_records = len(records)
-            history.normalized_records = len(normalized_rows)
-            history.imported_records = len(imported_examples)
-            history.duplicate_records = duplicate_records
-            history.invalid_records = invalid_records
-            history.error = None
-
-            session.add(history)
-            session.commit()
             return response_builder(
                 success=True,
                 message="Successfully imported external dataset.",
                 statusCode=201,
-                data={
-                    "import_history_id": history.id,
-                    "dataset_id": dataset.id,
-                    "dataset_name": dataset.name,
-                    "detected_format": detected_format,
-                    "fetched_records": len(records),
-                    "normalized_records": len(normalized_rows),
-                    "imported_records": len(imported_examples),
-                    "duplicate_records": duplicate_records,
-                    "invalid_records": invalid_records,
-                    "chunk_size": body.chunk_size,
-                    "dedupe_against_existing": body.dedupe_against_existing,
-                    "dedupe_within_payload": body.dedupe_within_payload,
-                },
+                data=result,
             )
         except ValueError as e:
             session.rollback()
-            if history:
-                history.status = "failed"
-                history.error = str(e)
-                session.add(history)
-                session.commit()
-            logger.saveToLog(f"[import_external_dataset] Validation failed: {e}", "ERROR")
+            _log_route_error("external_import.validation_failed", e, url=body.url)
             return response_builder(success=False, message=str(e), statusCode=400)
         except httpx.HTTPError as e:
             session.rollback()
-            if history:
-                history.status = "failed"
-                history.error = str(e)
-                session.add(history)
-                session.commit()
-            logger.saveToLog(f"[import_external_dataset] Request failed: {e}", "ERROR")
+            _log_route_error("external_import.request_failed", e, url=body.url)
             return response_builder(
                 success=False,
                 message="External import request failed.",
@@ -771,12 +682,7 @@ def register_data_routes(router: APIRouter):
             )
         except Exception as e:
             session.rollback()
-            if history:
-                history.status = "failed"
-                history.error = str(e)
-                session.add(history)
-                session.commit()
-            logger.saveToLog(f"[import_external_dataset] Unexpected error: {e}", "ERROR")
+            _log_route_error("external_import.unexpected_error", e, url=body.url)
             return response_builder(
                 success=False,
                 message="An unexpected error occurred while importing dataset.",
@@ -786,39 +692,23 @@ def register_data_routes(router: APIRouter):
     @router.get("/imports/history")
     def import_history(limit: int = Query(default=25, ge=1, le=200), session: Session = Depends(get_session)):
         try:
-            rows = session.exec(select(ImportHistory).order_by(ImportHistory.created_at.desc()).limit(limit)).all()
+            rows = get_import_history_rows(session, limit)
             return response_builder(
                 success=True,
                 message="Successfully returned import history.",
                 statusCode=200,
                 data={
-                    "imports": [
-                        {
-                            "id": row.id,
-                            "status": row.status,
-                            "source_url": row.source_url,
-                            "method": row.method,
-                            "detected_format": row.detected_format,
-                            "dataset_id": row.dataset_id,
-                            "dataset_name": row.dataset_name,
-                            "source_label": row.source_label,
-                            "fetched_records": row.fetched_records,
-                            "normalized_records": row.normalized_records,
-                            "imported_records": row.imported_records,
-                            "duplicate_records": row.duplicate_records,
-                            "invalid_records": row.invalid_records,
-                            "error": row.error,
-                            "created_at": row.created_at.isoformat() if row.created_at else None,
-                        }
-                        for row in rows
-                    ],
+                    "imports": rows,
                     "count": len(rows),
                 },
             )
         except Exception as e:
-            logger.saveToLog(f"[import_history] Unexpected error: {e}", "ERROR")
+            _log_route_error("import_history.unexpected_error", e, limit=limit)
             return response_builder(
                 success=False,
                 message="An error occurred while fetching import history.",
                 statusCode=500,
             )
+
+
+

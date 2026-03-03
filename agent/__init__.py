@@ -12,10 +12,7 @@ from .generation import generate_dataset
 from .grading import run_grading_agent
 from .naming import run_naming_agent
 from .persistence import save_responses
-from .settings import load_pricing
 from .types import AgentType
-
-load_pricing()
 
 __all__ = [
     "AgentType",
@@ -34,4 +31,7 @@ __all__ = [
     "run_naming_agent",
     "save_responses",
 ]
+
+
+
 

@@ -1,48 +1,4 @@
-import json
-
-
-def safe_json_dump(value) -> str | None:
-    if value is None:
-        return None
-    try:
-        return json.dumps(value)
-    except (TypeError, ValueError):
-        return json.dumps(str(value))
-
-
-def get_path_value(payload, path: str | None):
-    if not path:
-        return None
-    current = payload
-    for part in path.split("."):
-        if isinstance(current, dict):
-            if part not in current:
-                return None
-            current = current.get(part)
-            continue
-        if isinstance(current, list):
-            try:
-                index = int(part)
-            except (TypeError, ValueError):
-                return None
-            if index < 0 or index >= len(current):
-                return None
-            current = current[index]
-            continue
-        return None
-    return current
-
-
-def extract_records(payload) -> list:
-    if isinstance(payload, list):
-        return payload
-    if isinstance(payload, dict):
-        for key in ("data", "rows", "examples", "items", "records", "messages"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                return value
-        return [payload]
-    raise ValueError("Unsupported import payload shape.")
+from app.core.utils import extract_records, get_path_value, safe_json_dump
 
 
 def normalize_alpaca_row(row: dict) -> dict | None:
@@ -212,3 +168,40 @@ def scraper_reference_card() -> dict:
             "preview_limit": "int 1-100",
         },
     }
+
+
+def upload_reference_card() -> dict:
+    return {
+        "title": "File Intake Endpoint",
+        "method": "POST",
+        "endpoint": "/dataset/intake/upload",
+        "description": "Accepts uploaded files and stores them either as training-example datasets or chunked source documents.",
+        "curl": (
+            "curl -X POST http://localhost:8000/dataset/intake/upload "
+            "-F \"file=@./examples.jsonl\" "
+            "-F \"intake_mode=examples\" "
+            "-F \"dataset_name=uploaded-example-dataset\" "
+            "-F \"prompt=Imported file dataset\""
+        ),
+        "form_fields": {
+            "file": "binary file upload",
+            "intake_mode": "examples | source_material | pretraining_data",
+            "dataset_name": "string? (used for examples mode)",
+            "dataset_description": "string? (used for examples mode)",
+            "model": "string? (used for examples mode)",
+            "prompt": "string (used for examples mode)",
+            "dedupe_threshold": "float (0,1] used for examples mode",
+            "dedupe_against_existing": "boolean",
+            "dedupe_within_payload": "boolean",
+            "chunk_char_size": "int > 0 used for source/pretraining modes",
+            "chunk_overlap": "int >= 0 and < chunk_char_size",
+        },
+        "supported_files": {
+            "examples": [".jsonl", ".json", ".csv"],
+            "source_material": [".pdf", ".txt", ".csv", ".docx", ".md", ".json"],
+            "pretraining_data": [".pdf", ".txt", ".csv", ".docx", ".md", ".json"],
+        },
+    }
+
+
+

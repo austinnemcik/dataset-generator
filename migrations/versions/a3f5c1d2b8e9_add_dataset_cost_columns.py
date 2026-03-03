@@ -41,3 +41,4 @@ def downgrade() -> None:
     op.drop_column("dataset", "grading_cost")
     op.drop_column("dataset", "generation_cost")
 
+

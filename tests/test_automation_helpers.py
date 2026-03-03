@@ -24,3 +24,4 @@ def test_suggest_topic_count_bounds():
 
     assert _suggest_topic_count(1) == 1
     assert 1 <= _suggest_topic_count(25) <= 25
+

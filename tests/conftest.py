@@ -9,3 +9,4 @@ if str(ROOT) not in sys.path:
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("LOG_TO_STDOUT", "0")
 os.environ.setdefault("OPENROUTER_API_KEY", "test-key")
+

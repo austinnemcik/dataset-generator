@@ -2,14 +2,14 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-from config import get_settings
+from app.core.config import PROJECT_ROOT, get_settings
 
 settings = get_settings()
 LOG_FILE = settings.log_file
 LOG_LEVEL = settings.log_level
 LOG_TO_STDOUT = settings.log_to_stdout
 
-os.makedirs("logs", exist_ok=True)
+os.makedirs(PROJECT_ROOT / "logs", exist_ok=True)
 
 logger = logging.getLogger("dataset_generator")
 logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
@@ -32,3 +32,12 @@ def saveToLog(message: str, logType: str = "INFO"):
     level_name = (logType or "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     logger.log(level, message)
+
+
+def log_event(event: str, logType: str = "INFO", **fields):
+    parts = [f"[{event}]"]
+    for key in sorted(fields):
+        value = fields[key]
+        parts.append(f"{key}={value!r}")
+    saveToLog(" ".join(parts), logType)
+

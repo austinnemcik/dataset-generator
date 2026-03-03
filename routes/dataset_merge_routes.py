@@ -4,11 +4,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from agent import cosine_similarity, is_duplicate, run_naming_agent
-from database import Dataset, ImportHistory, TrainingExample, get_session
-from generics import new_run_id, response_builder
+from app.core.database import Dataset, ImportHistory, TrainingExample, get_session
+from app.core.generics import new_run_id, response_builder
 from routes.dataset_models import MergeRequest
 from routes.dataset_shared import parse_embedding
-import logger
+import app.core.logger as logger
 
 
 def discover_merge_pools(
@@ -165,7 +165,11 @@ def register_merge_routes(router: APIRouter):
                 pool_grading_cost = round(sum(float(ds.grading_cost or 0.0) for ds in all_datasets), 8)
                 pool_total_cost = round(sum(float(ds.total_cost or 0.0) for ds in all_datasets), 8)
                 pool_models = sorted({str(ds.model).strip() for ds in all_datasets if getattr(ds, "model", None)})
+                pool_categories = sorted(
+                    {str(ds.category).strip() for ds in all_datasets if getattr(ds, "category", None)}
+                )
                 merged_model = ",".join(pool_models) if pool_models else None
+                merged_category = pool_categories[0] if len(pool_categories) == 1 else None
 
                 total_examples_before_dedupe += len(all_examples)
                 deduped_examples: list[TrainingExample] = []
@@ -210,6 +214,7 @@ def register_merge_routes(router: APIRouter):
                 dataset = Dataset(
                     name=meta["name"],
                     description=meta["description"],
+                    category=merged_category,
                     model=merged_model,
                     generation_cost=pool_generation_cost,
                     grading_cost=pool_grading_cost,
@@ -313,3 +318,6 @@ def register_merge_routes(router: APIRouter):
                 statusCode=500,
                 message="An unexpected error occurred while merging datasets",
             )
+
+
+

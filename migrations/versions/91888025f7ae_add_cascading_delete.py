@@ -32,3 +32,4 @@ def downgrade() -> None:
     op.drop_column('trainingexample', 'embedding')
     op.drop_column('trainingexample', 'prompt')
     # ### end Alembic commands ###
+

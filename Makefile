@@ -18,7 +18,7 @@ compile:
 check: lint test compile
 
 run:
-	uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+	uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 migrate-upgrade:
 	alembic upgrade head

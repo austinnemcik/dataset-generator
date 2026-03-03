@@ -5,8 +5,8 @@ from sqlmodel import Session, select
 
 from agent import pause_batch_run, restart_failed_batch_run, resume_batch_run, stop_batch_run
 from agent.automation import get_batch_run_status, start_generation
-from database import BatchRun, engine, get_session
-from generics import TimedLabel, response_builder, timer
+from app.core.database import BatchRun, engine, get_session
+from app.core.generics import TimedLabel, response_builder, timer
 from routes.dataset_models import BatchGeneration
 from routes.dataset_shared import (
     EventSourceResponse,
@@ -15,13 +15,119 @@ from routes.dataset_shared import (
     resolve_source_material,
     sse_message,
 )
-import logger
+import app.core.logger as logger
+
+
+def _source_material_mode(
+    resolved_source_material: str | None,
+    source_material_dataset_ids: list[int],
+    source_material_text_block_count: int,
+) -> str | None:
+    if source_material_dataset_ids and source_material_text_block_count > 0:
+        return "mixed"
+    if source_material_dataset_ids:
+        return "dataset_ids"
+    if resolved_source_material:
+        return "text"
+    return None
+
+
+def _build_run_allocations(
+    *,
+    amount: int,
+    topics: list[str],
+    agent_types: list | None,
+    random_agent: bool,
+) -> tuple[list[dict], dict[str, int], dict[str, int]]:
+    iteration_agents = [None] if random_agent else list(agent_types or [])
+    allocation_slots: list[dict] = []
+    for topic_index, topic_name in enumerate(topics):
+        for agent_index, selected_agent in enumerate(iteration_agents):
+            allocation_slots.append(
+                {
+                    "topic": topic_name,
+                    "agent": selected_agent,
+                    "topic_index": topic_index,
+                    "agent_index": agent_index,
+                    "amount": 0,
+                }
+            )
+
+    for index in range(amount):
+        allocation_slots[index % len(allocation_slots)]["amount"] += 1
+
+    run_allocations = [slot for slot in allocation_slots if slot["amount"] > 0]
+    topic_allocations: dict[str, int] = {}
+    agent_allocations: dict[str, int] = {}
+    for slot in run_allocations:
+        topic_allocations[slot["topic"]] = topic_allocations.get(slot["topic"], 0) + slot["amount"]
+        agent_name = slot["agent"].value if slot["agent"] else "random"
+        agent_allocations[agent_name] = agent_allocations.get(agent_name, 0) + slot["amount"]
+    return run_allocations, topic_allocations, agent_allocations
+
+
+def _aggregate_batch_summary(
+    *,
+    per_slot_summaries: list[dict],
+    topics: list[str],
+    agent_types: list,
+    random_agent: bool,
+    source_material_dataset_ids: list[int],
+    source_material_text_block_count: int,
+    resolved_source_material: str | None,
+    run_allocations: list[dict],
+    topic_allocations: dict[str, int],
+    agent_allocations: dict[str, int],
+    max_concurrency: int,
+) -> dict:
+    return {
+        "requested_runs": sum(summary.get("requested_runs", 0) for summary in per_slot_summaries),
+        "generated": sum(summary.get("generated", 0) for summary in per_slot_summaries),
+        "saved": sum(summary.get("saved", 0) for summary in per_slot_summaries),
+        "failed": sum(summary.get("failed", 0) for summary in per_slot_summaries),
+        "requested_topics": topics,
+        "requested_agents": [agent.value for agent in agent_types],
+        "random_agent_requested": random_agent,
+        "random_agent_applied": random_agent,
+        "source_material_dataset_ids": source_material_dataset_ids,
+        "source_material_text_block_count": source_material_text_block_count,
+        "source_material_mode": _source_material_mode(
+            resolved_source_material,
+            source_material_dataset_ids,
+            source_material_text_block_count,
+        ),
+        "topic_allocations": [
+            {"topic": topic_name, "amount": amount_alloc}
+            for topic_name, amount_alloc in topic_allocations.items()
+        ],
+        "agent_allocations": agent_allocations,
+        "run_allocations": [
+            {
+                "topic": slot["topic"],
+                "agent": slot["agent"].value if slot["agent"] else "random",
+                "amount": slot["amount"],
+            }
+            for slot in run_allocations
+        ],
+        "slot_parallelism": min(len(run_allocations), max_concurrency),
+        "per_topic_summaries": per_slot_summaries,
+        "run_ids": [run_id for summary in per_slot_summaries for run_id in summary.get("run_ids", [])],
+        "batch_run_ids": [
+            summary.get("batch_run_id")
+            for summary in per_slot_summaries
+            if summary.get("batch_run_id")
+        ],
+        "dataset_keys": [
+            key for summary in per_slot_summaries for key in summary.get("dataset_keys", [])
+        ],
+        "results": [result for summary in per_slot_summaries for result in summary.get("results", [])],
+    }
 
 
 def register_batch_routes(router: APIRouter):
     @router.post("/batch/generate")
     async def get_multiple_datasets(body: BatchGeneration, session: Session = Depends(get_session)):
-        agent_types = body.agent_types
+        agent_types = body.agent_types or []
         topics = body.topics
         amount = body.amount
         ex_amt = body.ex_amt
@@ -32,24 +138,6 @@ def register_batch_routes(router: APIRouter):
         seed = body.seed
         source_material = body.source_material
         model = body.model
-        if amount > 250 or not amount > 0:
-            return response_builder(
-                success=False,
-                message="Bad generation amount.  Values 1-250 are acceptable.",
-                statusCode=400,
-            )
-        if ex_amt > 50 or not ex_amt > 0:
-            return response_builder(
-                success=False,
-                message="Bad example amount per dataset. Values 1-50 are allowed",
-                statusCode=400,
-            )
-        if max_concurrency > 50 or not max_concurrency > 0:
-            return response_builder(
-                success=False,
-                message="Bad max_concurrency. Values 1-50 are allowed.",
-                statusCode=400,
-            )
         try:
             (
                 resolved_source_material,
@@ -59,77 +147,12 @@ def register_batch_routes(router: APIRouter):
         except ValueError as e:
             return response_builder(success=False, message=str(e), statusCode=400)
 
-        normalized_topics: list[str] = []
-        for t in topics:
-            if not isinstance(t, str):
-                continue
-            cleaned = t.strip()
-            if cleaned:
-                normalized_topics.append(cleaned)
-
-        deduped_topics: list[str] = []
-        seen_topics: set[str] = set()
-        for t in normalized_topics:
-            key = t.casefold()
-            if key in seen_topics:
-                continue
-            seen_topics.add(key)
-            deduped_topics.append(t)
-
-        if not deduped_topics:
-            return response_builder(
-                success=False,
-                message="No valid topic(s) provided.",
-                statusCode=400,
-            )
-        if len(deduped_topics) > 5:
-            return response_builder(
-                success=False,
-                message="Too many topics. Maximum allowed is 5.",
-                statusCode=400,
-            )
-
-        active_agents = []
-        if agent_types:
-            seen_agents = set()
-            for agent in agent_types:
-                if agent in seen_agents:
-                    continue
-                seen_agents.add(agent)
-                active_agents.append(agent)
-
-        if not random_agent and not active_agents:
-            return response_builder(
-                success=False,
-                message="agent_types must contain at least one value when random_agent is false.",
-                statusCode=400,
-            )
-
-        iteration_agents = [None] if random_agent else active_agents
-        allocation_slots: list[dict] = []
-        for t_idx, topic_name in enumerate(deduped_topics):
-            for a_idx, selected_agent in enumerate(iteration_agents):
-                allocation_slots.append(
-                    {
-                        "topic": topic_name,
-                        "agent": selected_agent,
-                        "topic_index": t_idx,
-                        "agent_index": a_idx,
-                        "amount": 0,
-                    }
-                )
-
-        for i in range(amount):
-            allocation_slots[i % len(allocation_slots)]["amount"] += 1
-
-        run_allocations = [slot for slot in allocation_slots if slot["amount"] > 0]
-        topic_alloc_map: dict[str, int] = {}
-        agent_alloc_map: dict[str, int] = {}
-        for slot in run_allocations:
-            topic_name = slot["topic"]
-            agent_name = slot["agent"].value if slot["agent"] else "random"
-            topic_alloc_map[topic_name] = topic_alloc_map.get(topic_name, 0) + slot["amount"]
-            agent_alloc_map[agent_name] = agent_alloc_map.get(agent_name, 0) + slot["amount"]
+        run_allocations, topic_alloc_map, agent_alloc_map = _build_run_allocations(
+            amount=amount,
+            topics=topics,
+            agent_types=agent_types,
+            random_agent=random_agent,
+        )
 
         with timer(TimedLabel.BATCH_GENERATION):
             try:
@@ -176,46 +199,19 @@ def register_batch_routes(router: APIRouter):
                     statusCode=500,
                 )
 
-        aggregate_summary = {
-            "requested_runs": sum(s.get("requested_runs", 0) for s in per_topic_summaries),
-            "generated": sum(s.get("generated", 0) for s in per_topic_summaries),
-            "saved": sum(s.get("saved", 0) for s in per_topic_summaries),
-            "failed": sum(s.get("failed", 0) for s in per_topic_summaries),
-            "requested_topics": deduped_topics,
-            "requested_agents": [a.value for a in active_agents],
-            "random_agent_requested": random_agent,
-            "random_agent_applied": random_agent,
-            "source_material_dataset_ids": source_material_dataset_ids,
-            "source_material_text_block_count": source_material_text_block_count,
-            "source_material_mode": (
-                "mixed"
-                if source_material_dataset_ids and source_material_text_block_count > 0
-                else (
-                    "dataset_ids"
-                    if source_material_dataset_ids
-                    else ("text" if resolved_source_material else None)
-                )
-            ),
-            "topic_allocations": [
-                {"topic": topic_name, "amount": amount_alloc}
-                for topic_name, amount_alloc in topic_alloc_map.items()
-            ],
-            "agent_allocations": agent_alloc_map,
-            "run_allocations": [
-                {
-                    "topic": slot["topic"],
-                    "agent": slot["agent"].value if slot["agent"] else "random",
-                    "amount": slot["amount"],
-                }
-                for slot in run_allocations
-            ],
-            "slot_parallelism": min(len(run_allocations), max_concurrency),
-            "per_topic_summaries": per_topic_summaries,
-            "run_ids": [run_id for s in per_topic_summaries for run_id in s.get("run_ids", [])],
-            "batch_run_ids": [s.get("batch_run_id") for s in per_topic_summaries if s.get("batch_run_id")],
-            "dataset_keys": [key for s in per_topic_summaries for key in s.get("dataset_keys", [])],
-            "results": [r for s in per_topic_summaries for r in s.get("results", [])],
-        }
+        aggregate_summary = _aggregate_batch_summary(
+            per_slot_summaries=per_topic_summaries,
+            topics=topics,
+            agent_types=agent_types,
+            random_agent=random_agent,
+            source_material_dataset_ids=source_material_dataset_ids,
+            source_material_text_block_count=source_material_text_block_count,
+            resolved_source_material=resolved_source_material,
+            run_allocations=run_allocations,
+            topic_allocations=topic_alloc_map,
+            agent_allocations=agent_alloc_map,
+            max_concurrency=max_concurrency,
+        )
 
         if aggregate_summary["saved"] > 0:
             return response_builder(
@@ -477,3 +473,6 @@ def register_batch_routes(router: APIRouter):
                 message="An error occurred while restarting failed batch items.",
                 statusCode=500,
             )
+
+
+

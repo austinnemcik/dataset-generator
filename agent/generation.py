@@ -1,7 +1,7 @@
 import json
 
-import logger
-from generics import TimedLabel
+import app.core.logger as logger
+from app.core.generics import TimedLabel
 
 from .llm import run_agent_async
 from .parsing import parse_json_with_fallback
@@ -76,3 +76,6 @@ async def generate_dataset(
     if parse_errors:
         raise ValueError(f"Agent returned malformed JSON: {parse_errors[-1]}")
     raise ValueError("No valid examples generated")
+
+
+

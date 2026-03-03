@@ -1,6 +1,13 @@
 import os
+from pathlib import Path
 from dataclasses import dataclass
 from functools import lru_cache
+
+from dotenv import load_dotenv
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_DIR = PROJECT_ROOT / "config"
+load_dotenv(CONFIG_DIR / ".env")
 
 
 def require_env(name: str) -> str:
@@ -31,10 +38,10 @@ def get_settings() -> AppSettings:
     return AppSettings(
         database_url=os.getenv("DATABASE_URL"),
         server_url=os.getenv("SERVER_URL", "http://localhost:8000"),
-        log_file=os.getenv("LOG_FILE", "logs/log.txt"),
+        log_file=os.getenv("LOG_FILE", str(PROJECT_ROOT / "logs" / "log.txt")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         log_to_stdout=_as_bool(os.getenv("LOG_TO_STDOUT"), True),
-        export_artifact_dir=os.getenv("EXPORT_ARTIFACT_DIR", os.path.join(os.getcwd(), "exports")),
+        export_artifact_dir=os.getenv("EXPORT_ARTIFACT_DIR", str(PROJECT_ROOT / "exports")),
     )
 
 
@@ -43,3 +50,4 @@ def get_database_url() -> str:
     if not database_url or not str(database_url).strip():
         raise RuntimeError("Missing required environment variable: DATABASE_URL")
     return database_url
+

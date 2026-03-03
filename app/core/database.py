@@ -1,11 +1,9 @@
 from datetime import datetime, timezone
 
-from dotenv import load_dotenv
 from sqlmodel import Field, Relationship, SQLModel, Session, create_engine
 
-from config import get_database_url
+from app.core.config import get_database_url
 
-load_dotenv()
 _DATABASE_URL = get_database_url()
 
 _engine_kwargs = {"pool_pre_ping": True}
@@ -33,6 +31,7 @@ class Dataset(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True) # this will automatically set an id if None
     name: str
     description: str | None = None
+    category: str | None = Field(default=None, index=True)
     model: str | None = None
     source_run_id: str | None = Field(default=None, index=True, unique=True)
     generation_cost: float = 0.0
@@ -135,4 +134,26 @@ class ExportHistory(SQLModel, table=True):
     val_examples: int = 0
     error: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class SourceDocument(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    file_type: str
+    char_count: int = 0
+    created_at: datetime = Field(default_factory=utcnow)
+    chunks: list["SourceChunk"] = Relationship(
+        back_populates="document",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
+
+class SourceChunk(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    document_id: int = Field(foreign_key="sourcedocument.id", index=True)
+    chunk_index: int = Field(index=True)
+    content: str
+    char_count: int = 0
+    document: "SourceDocument" = Relationship(back_populates="chunks")
+
 

@@ -1,7 +1,7 @@
 import json
 
-import logger
-from generics import TimedLabel, saveScore, timer
+import app.core.logger as logger
+from app.core.generics import TimedLabel, saveScore, timer
 
 from .llm import run_agent_async
 from .parsing import parse_json_with_fallback
@@ -14,6 +14,26 @@ from .settings import (
     MIN_RESPONSE_CHAR_LENGTH,
 )
 from .types import AgentType
+
+CATEGORY_TAXONOMY = (
+    "technology_software",
+    "science_math",
+    "business_finance_law",
+    "health_medicine",
+    "education_tutoring",
+    "creative_media",
+    "communication_support",
+    "humanities_social_science",
+    "lifestyle_practical",
+    "general_reasoning",
+)
+
+
+def _normalize_category(raw_category: object) -> str | None:
+    if not isinstance(raw_category, str):
+        return None
+    cleaned = raw_category.strip().lower()
+    return cleaned if cleaned in CATEGORY_TAXONOMY else None
 
 
 async def run_grading_agent(
@@ -57,6 +77,7 @@ Return ONLY this JSON object schema:
 {{
   "model": "{model}",
   "topic": "{topic}",
+  "category": "{CATEGORY_TAXONOMY[0]}",
   "dataset_score_0_10": 0.0,
   "notes": "string",
   "rows": [
@@ -67,6 +88,7 @@ Return ONLY this JSON object schema:
 Rules:
 - rows length must equal input dataset length.
 - idx must be 0-based and align to input order.
+- category must be exactly one of: {", ".join(CATEGORY_TAXONOMY)}.
 - accept = 1 only when score_0_10 >= {MIN_GRADING_SCORE}.
 - No markdown. No extra keys outside schema.{retry_note}
 """
@@ -169,11 +191,17 @@ Rejected examples:
         except (TypeError, ValueError):
             dataset_score = 0.0
         notes = str(loaded.get("notes", ""))
-        return accepted_local, rejected_local, dataset_score, notes
+        category = _normalize_category(loaded.get("category"))
+        return accepted_local, rejected_local, dataset_score, notes, category
 
     if not examples:
         logger.saveToLog("[run_grading_agent] No examples passed for grading", "ERROR")
-        return []
+        return {
+            "accepted_examples": [],
+            "dataset_score": 0.0,
+            "notes": "No examples passed for grading",
+            "category": None,
+        }
 
     with timer(label=TimedLabel.GRADING_CALL):
         loaded, json_retries, parse_failure = await _grade_batch_with_json_retries(
@@ -195,13 +223,19 @@ Rejected examples:
                 "accepted_count": 0,
                 "rejected_count": len(examples),
                 "notes": str(parse_failure),
+                "category": None,
                 "run_id": run_id,
                 "dataset_key": dataset_key,
             },
         )
-        return []
+        return {
+            "accepted_examples": [],
+            "dataset_score": 0.0,
+            "notes": str(parse_failure),
+            "category": None,
+        }
 
-    accepted, rejected, dataset_score, dataset_notes = _evaluate_rows(examples, loaded)
+    accepted, rejected, dataset_score, dataset_notes, dataset_category = _evaluate_rows(examples, loaded)
 
     # One regeneration pass for rejected items, then one re-grade pass.
     if rejected:
@@ -230,7 +264,7 @@ Rejected examples:
                     regen_examples, stage="grading_regeneration_batch", tag="regenerated"
                 )
                 if not parse_fail_regen and isinstance(loaded_regen, dict):
-                    regen_accepted, _, _, _ = _evaluate_rows(regen_examples, loaded_regen)
+                    regen_accepted, _, _, _, _ = _evaluate_rows(regen_examples, loaded_regen)
                     # Map back accepted regenerated examples to original positions.
                     for local_idx, ex in enumerate(regen_examples):
                         if ex in regen_accepted:
@@ -251,6 +285,7 @@ Rejected examples:
             "topic": topic,
             "model": model,
             "grader_model": GRADING_MODEL,
+            "category": dataset_category,
             "input_count": len(examples),
             "accepted_count": len(accepted),
             "rejected_count": rejected_count,
@@ -260,10 +295,22 @@ Rejected examples:
         },
     )
     logger.saveToLog(
-        f"[run_grading_agent] Batch summary generator_model={model} grader_model={GRADING_MODEL} topic={topic} input={len(examples)} accepted={len(accepted)} rejected={rejected_count} dataset_score={dataset_score}",
+        (
+            f"[run_grading_agent] Batch summary generator_model={model} grader_model={GRADING_MODEL} "
+            f"topic={topic} category={dataset_category} input={len(examples)} accepted={len(accepted)} "
+            f"rejected={rejected_count} dataset_score={dataset_score}"
+        ),
         "INFO",
     )
     if not accepted:
         logger.saveToLog("[run_grading_agent] No examples passed grading", "ERROR")
-    return accepted
+    return {
+        "accepted_examples": accepted,
+        "dataset_score": dataset_score,
+        "notes": dataset_notes,
+        "category": dataset_category,
+    }
+
+
+
 

@@ -10,3 +10,4 @@ def test_external_import_request_has_dedupe_and_chunk_defaults():
     assert body.dedupe_within_payload is True
     assert body.chunk_size == 200
     assert body.max_records == 2000
+

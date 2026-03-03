@@ -3,7 +3,7 @@ import pytest
 
 def test_serialize_export_record_sharegpt():
     pytest.importorskip("sqlmodel")
-    from database import TrainingExample
+    from app.core.database import TrainingExample
     from services.export_service import _serialize_export_record
 
     row = _serialize_export_record(
@@ -15,7 +15,7 @@ def test_serialize_export_record_sharegpt():
 
 def test_serialize_export_record_chatml():
     pytest.importorskip("sqlmodel")
-    from database import TrainingExample
+    from app.core.database import TrainingExample
     from services.export_service import _serialize_export_record
 
     row = _serialize_export_record(
@@ -27,7 +27,7 @@ def test_serialize_export_record_chatml():
 
 def test_serialize_export_record_alpaca():
     pytest.importorskip("sqlmodel")
-    from database import TrainingExample
+    from app.core.database import TrainingExample
     from services.export_service import _serialize_export_record
 
     row = _serialize_export_record(
@@ -35,3 +35,4 @@ def test_serialize_export_record_alpaca():
         "alpaca",
     )
     assert row["output"] == "resp"
+

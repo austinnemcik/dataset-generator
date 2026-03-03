@@ -1,25 +1,19 @@
-import json
-
 import httpx
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from agent import get_embedding, is_duplicate
-from database import TrainingExample
+from app.core.database import TrainingExample
 from routes.data_processing import detect_format, extract_records, normalize_import_records, normalize_scraper_text
 from routes.dataset_models import ExternalImportRequest, ScraperIntakeRequest
+from services.embedding_service import (
+    embed_text,
+    embedding_json,
+    is_semantic_duplicate,
+    load_training_example_embeddings,
+)
 
 
 def load_existing_import_embeddings(session: Session) -> list[list[float]]:
-    embeddings: list[list[float]] = []
-    examples = session.exec(select(TrainingExample.embedding).where(TrainingExample.embedding.is_not(None))).all()
-    for embedding_raw in examples:
-        try:
-            parsed = json.loads(embedding_raw)
-            if isinstance(parsed, list) and parsed:
-                embeddings.append([float(x) for x in parsed])
-        except (TypeError, ValueError, json.JSONDecodeError):
-            continue
-    return embeddings
+    return load_training_example_embeddings(session)
 
 
 def iter_chunks(items: list, chunk_size: int):
@@ -68,27 +62,19 @@ def build_scraper_examples(session: Session, body: ScraperIntakeRequest) -> tupl
                 if context_parts:
                     instruction = f"{instruction}\n\n" + "\n".join(context_parts)
 
-            embedding = get_embedding(instruction)
-            embedding_list = embedding.tolist() if hasattr(embedding, "tolist") else embedding
-            if not isinstance(embedding_list, list) or not embedding_list:
+            embedding_list = embed_text(instruction)
+            embedding_str = embedding_json(embedding_list)
+            if embedding_list is None or embedding_str is None:
                 invalid_records += 1
                 continue
 
-            comparable_embeddings: list[list[float]] = []
+            candidate_embeddings: list[list[float]] = []
             if body.dedupe_against_existing:
-                comparable_embeddings.extend(
-                    existing for existing in existing_embeddings if len(existing) == len(embedding_list)
-                )
+                candidate_embeddings.extend(existing_embeddings)
             if body.dedupe_within_payload:
-                comparable_embeddings.extend(
-                    existing for existing in payload_embeddings if len(existing) == len(embedding_list)
-                )
+                candidate_embeddings.extend(payload_embeddings)
 
-            if comparable_embeddings and is_duplicate(
-                embedding_list,
-                comparable_embeddings,
-                threshold=body.dedupe_threshold,
-            ):
+            if is_semantic_duplicate(embedding_list, candidate_embeddings, threshold=body.dedupe_threshold):
                 duplicate_records += 1
                 continue
 
@@ -99,7 +85,7 @@ def build_scraper_examples(session: Session, body: ScraperIntakeRequest) -> tupl
                     prompt=body.prompt,
                     instruction=instruction,
                     response=response,
-                    embedding=json.dumps(embedding_list),
+                    embedding=embedding_str,
                 )
             )
 
@@ -140,27 +126,19 @@ def build_external_examples(
             if len(instruction) < 2 or len(response) < 2:
                 invalid_records += 1
                 continue
-            embedding = get_embedding(instruction)
-            embedding_list = embedding.tolist() if hasattr(embedding, "tolist") else embedding
-            if not isinstance(embedding_list, list) or not embedding_list:
+            embedding_list = embed_text(instruction)
+            embedding_str = embedding_json(embedding_list)
+            if embedding_list is None or embedding_str is None:
                 invalid_records += 1
                 continue
 
-            comparable_embeddings: list[list[float]] = []
+            candidate_embeddings: list[list[float]] = []
             if body.dedupe_against_existing:
-                comparable_embeddings.extend(
-                    existing for existing in existing_embeddings if len(existing) == len(embedding_list)
-                )
+                candidate_embeddings.extend(existing_embeddings)
             if body.dedupe_within_payload:
-                comparable_embeddings.extend(
-                    existing for existing in payload_embeddings if len(existing) == len(embedding_list)
-                )
+                candidate_embeddings.extend(payload_embeddings)
 
-            if comparable_embeddings and is_duplicate(
-                embedding_list,
-                comparable_embeddings,
-                threshold=body.dedupe_threshold,
-            ):
+            if is_semantic_duplicate(embedding_list, candidate_embeddings, threshold=body.dedupe_threshold):
                 duplicate_records += 1
                 continue
 
@@ -174,8 +152,10 @@ def build_external_examples(
                     prompt=body.prompt,
                     instruction=instruction,
                     response=response,
-                    embedding=json.dumps(embedding_list),
+                    embedding=embedding_str,
                 )
             )
 
     return imported_examples, duplicate_records, invalid_records
+
+

@@ -35,3 +35,4 @@ def test_normalize_scraper_text_enforces_min_length():
     parsed = normalize_scraper_text("this is enough content", 10)
     assert parsed is not None
     assert parsed[1] == "this is en"
+

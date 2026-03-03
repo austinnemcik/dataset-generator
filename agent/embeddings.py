@@ -1,8 +1,8 @@
 import numpy as np
-from generics import TimedLabel, timer
+from app.core.generics import TimedLabel, timer
 import torch
 from sentence_transformers import SentenceTransformer
-import logger
+import app.core.logger as logger
 
 from .settings import THRESHOLD, client
 
@@ -30,3 +30,5 @@ def is_duplicate(
             logger.saveToLog("Discarding duplicate example", "INFO")
             return True
     return False
+
+

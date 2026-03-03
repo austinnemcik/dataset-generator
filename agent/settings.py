@@ -1,13 +1,11 @@
 import os
 
 import requests
-from dotenv import load_dotenv
 from openai import OpenAI
 
-import logger
-from config import get_settings
+import app.core.logger as logger
+from app.core.config import get_settings
 
-load_dotenv()
 _settings = get_settings()
 
 SERVER_URL = _settings.server_url
@@ -30,10 +28,14 @@ client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=API_KEY)
 
 
 def load_pricing():
+    if not API_KEY:
+        logger.saveToLog("OPENROUTER_API_KEY is not configured; skipping pricing refresh.", "WARNING")
+        return
     try:
         res = requests.get(
             "https://openrouter.ai/api/v1/models",
             headers={"Authorization": f"Bearer {API_KEY}"},
+            timeout=15,
         )
         res.raise_for_status()
     except requests.RequestException as e:
@@ -59,4 +61,7 @@ def calculate_price(input_tokens: int, output_tokens: int, model: str):
     output_price = pricing["completion"] * output_tokens
     total_price = input_price + output_price
     return f"${total_price}", f"${input_price}", f"${output_price}"
+
+
+
 

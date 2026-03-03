@@ -5,7 +5,7 @@ def test_dataset_intake_reference_route_smoke():
     pytest.importorskip("fastapi")
     pytest.importorskip("sqlmodel")
     testclient = pytest.importorskip("fastapi.testclient")
-    from main import app
+    from app.main import app
 
     with testclient.TestClient(app) as client:
         response = client.get("/dataset/intake/reference")
@@ -19,7 +19,7 @@ def test_export_history_route_smoke():
     pytest.importorskip("fastapi")
     pytest.importorskip("sqlmodel")
     testclient = pytest.importorskip("fastapi.testclient")
-    from main import app
+    from app.main import app
 
     with testclient.TestClient(app) as client:
         response = client.get("/dataset/exports/history")
@@ -27,3 +27,4 @@ def test_export_history_route_smoke():
     assert response.status_code == 200
     payload = response.json()
     assert payload.get("success") is True
+

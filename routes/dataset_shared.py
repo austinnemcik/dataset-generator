@@ -1,12 +1,9 @@
-import json
-
-from fastapi import Request
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
-from database import Dataset, TrainingExample
-from generics import get_latest_grading_result, get_run_costs
-from sse_starlette.sse import EventSourceResponse
+from app.core.database import Dataset, SourceDocument, TrainingExample
+from app.core.generics import get_latest_grading_result, get_run_costs
+from app.core.utils import parse_embedding, parse_last_event_index, sse_message
 
 try:
     from sse_starlette.sse import EventSourceResponse
@@ -41,6 +38,7 @@ def resolve_source_material(
         raise ValueError("source_material must be a string or list of dataset IDs/text blocks.")
 
     dataset_ids: list[int] = []
+    document_ids: list[int] = []
     text_blocks: list[str] = []
     seen_ids: set[int] = set()
     for item in source_material:
@@ -53,11 +51,23 @@ def resolve_source_material(
         if isinstance(item, str):
             cleaned = item.strip()
             if cleaned:
+                lowered = cleaned.casefold()
+                if lowered.startswith("doc:") or lowered.startswith("document:"):
+                    _, _, raw_id = cleaned.partition(":")
+                    try:
+                        doc_id = int(raw_id.strip())
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(f"Invalid source document reference: {cleaned}") from exc
+                    if doc_id in seen_ids:
+                        continue
+                    seen_ids.add(doc_id)
+                    document_ids.append(doc_id)
+                    continue
                 text_blocks.append(cleaned)
             continue
         raise ValueError("source_material list values must be integers or strings.")
 
-    if not dataset_ids and not text_blocks:
+    if not dataset_ids and not document_ids and not text_blocks:
         raise ValueError("source_material list cannot be empty.")
 
     context_lines = [
@@ -99,32 +109,23 @@ def resolve_source_material(
                 context_lines.append(f"EXAMPLE {idx} INSTRUCTION: {example.instruction}")
                 context_lines.append(f"EXAMPLE {idx} RESPONSE: {example.response}")
 
+    if document_ids:
+        documents = session.exec(
+            select(SourceDocument).where(SourceDocument.id.in_(document_ids)).order_by(SourceDocument.id)
+        ).all()
+        found_doc_ids = {doc.id for doc in documents if doc.id is not None}
+        missing_doc_ids = [document_id for document_id in document_ids if document_id not in found_doc_ids]
+        if missing_doc_ids:
+            raise ValueError(f"source_material document IDs not found: {missing_doc_ids}")
+
+        for document in documents:
+            context_lines.append("")
+            context_lines.append(f"DOCUMENT {document.id}: {document.name}")
+            for chunk in sorted(document.chunks, key=lambda entry: entry.chunk_index):
+                context_lines.append(f"CHUNK {chunk.chunk_index}:")
+                context_lines.append(chunk.content)
+
     return "\n".join(context_lines), dataset_ids, len(text_blocks)
-
-
-def parse_embedding(embedding_raw: str | None) -> list[float] | None:
-    if not embedding_raw:
-        return None
-    try:
-        parsed = json.loads(embedding_raw)
-        if not isinstance(parsed, list) or not parsed:
-            return None
-        return [float(x) for x in parsed]
-    except (ValueError, TypeError, json.JSONDecodeError):
-        return None
-
-
-def sse_message(*, data: dict, event: str | None = None, event_id: str | None = None) -> str:
-    lines: list[str] = []
-    if event_id:
-        lines.append(f"id: {event_id}")
-    if event:
-        lines.append(f"event: {event}")
-    payload = json.dumps(data, separators=(",", ":"))
-    for line in payload.splitlines() or ["{}"]:
-        lines.append(f"data: {line}")
-    return "\n".join(lines) + "\n\n"
-
 
 def build_stream_item_payload(item: dict) -> dict:
     run_id = item.get("run_id")
@@ -146,6 +147,7 @@ def build_stream_item_payload(item: dict) -> dict:
         "error_type": item.get("error_type"),
         "error": item.get("error"),
         "score": grading.get("score") if grading else None,
+        "category": grading.get("category") if grading else None,
         "grader_model": grading.get("grader_model") if grading else None,
         "accepted_count": grading.get("accepted_count") if grading else None,
         "rejected_count": grading.get("rejected_count") if grading else None,
@@ -155,15 +157,5 @@ def build_stream_item_payload(item: dict) -> dict:
     }
 
 
-def parse_last_event_index(last_event_id: str | None) -> int:
-    if not last_event_id:
-        return -1
-    if not last_event_id.startswith("item:"):
-        return -1
-    parts = last_event_id.split(":")
-    if len(parts) < 2:
-        return -1
-    try:
-        return int(parts[1])
-    except (TypeError, ValueError):
-        return -1
+
+

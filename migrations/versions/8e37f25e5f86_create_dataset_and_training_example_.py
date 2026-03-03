@@ -45,3 +45,4 @@ def downgrade() -> None:
     op.drop_table('trainingexample')
     op.drop_table('dataset')
     # ### end Alembic commands ###
+

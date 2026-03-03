@@ -1,8 +1,8 @@
 import httpx
-import logger
+import app.core.logger as logger
 import math
 
-from generics import get_run_costs, new_run_id
+from app.core.generics import get_run_costs, new_run_id
 
 from .grading import run_grading_agent
 from .naming import run_naming_agent
@@ -36,7 +36,7 @@ async def save_responses(
         logger.saveToLog("[save_responses] Naming agent failed.. aborting", "ERROR")
         raise ValueError("Naming agent returned no metadata")
 
-    graded = await run_grading_agent(
+    graded_result = await run_grading_agent(
         topic=topic,
         model=model,
         examples=examples,
@@ -45,22 +45,25 @@ async def save_responses(
         run_id=run_id,
         dataset_key=dataset_key,
     )
+    graded_examples = graded_result.get("accepted_examples", [])
+    graded_category = graded_result.get("category")
     required_min = max(1, math.ceil((amount or len(examples) or 1) * MIN_SAVE_RATIO))
-    if len(graded) < required_min:
+    if len(graded_examples) < required_min:
         logger.saveToLog(
-            f"[save_responses] Valid examples below threshold. valid={len(graded)} required_min={required_min}. Aborting ingest.",
+            f"[save_responses] Valid examples below threshold. valid={len(graded_examples)} required_min={required_min}. Aborting ingest.",
             "ERROR",
         )
         raise ValueError(
-            f"Valid examples below threshold ({len(graded)}/{amount}); need at least {required_min}"
+            f"Valid examples below threshold ({len(graded_examples)}/{amount}); need at least {required_min}"
         )
     payload = {
         "dataset_name": meta["name"],
         "dataset_description": meta["description"],
         "dataset_id": 0,
         "run_id": run_id,
+        "category": graded_category,
         "model": model,
-        "example": graded,
+        "example": graded_examples,
         "prompt": prompt,
     }
     costs = get_run_costs(run_id)
@@ -83,4 +86,7 @@ async def save_responses(
     except Exception as e:
         logger.saveToLog(f"[save_responses] Failed to POST to /ingest, {e}", "ERROR")
         raise RuntimeError("Ingest API call failed") from e
+
+
+
 

@@ -51,3 +51,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index(op.f("ix_importhistory_status"), table_name="importhistory")
     op.drop_table("importhistory")
+

@@ -1,4 +1,4 @@
-from config import _as_bool, get_settings
+from app.core.config import _as_bool, get_settings
 
 
 def test_as_bool_parses_common_truthy_values():
@@ -15,3 +15,4 @@ def test_get_settings_uses_defaults_when_optional_env_absent(monkeypatch):
     settings = get_settings()
     assert settings.server_url == "http://localhost:8000"
     assert settings.log_level == "INFO"
+

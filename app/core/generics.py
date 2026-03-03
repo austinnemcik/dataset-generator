@@ -307,3 +307,4 @@ def _load_grading_summary() -> dict:
 def _write_grading_summary(data: dict):
     doc = _load_benchmark_document(_grading_benchmark_path())
     _write_benchmark_document(_grading_benchmark_path(), doc["rows"], data)
+
