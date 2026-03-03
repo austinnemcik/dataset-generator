@@ -36,6 +36,103 @@ def _normalize_category(raw_category: object) -> str | None:
     return cleaned if cleaned in CATEGORY_TAXONOMY else None
 
 
+def _empty_grading_result(notes: str) -> dict:
+    return {
+        "accepted_examples": [],
+        "dataset_score": 0.0,
+        "notes": notes,
+        "category": None,
+    }
+
+
+def _grading_score_metadata(
+    *,
+    topic: str,
+    model: str,
+    input_count: int,
+    accepted_count: int,
+    rejected_count: int,
+    notes: str,
+    category: str | None,
+    run_id: str | None,
+    dataset_key: str | None,
+) -> dict:
+    return {
+        "topic": topic,
+        "model": model,
+        "grader_model": GRADING_MODEL,
+        "category": category,
+        "input_count": input_count,
+        "accepted_count": accepted_count,
+        "rejected_count": rejected_count,
+        "notes": notes,
+        "run_id": run_id,
+        "dataset_key": dataset_key,
+    }
+
+
+def _row_map(rows: object) -> dict[int, dict]:
+    if not isinstance(rows, list):
+        return {}
+    out: dict[int, dict] = {}
+    for row in rows:
+        if isinstance(row, dict) and isinstance(row.get("idx"), int):
+            out[row["idx"]] = row
+    return out
+
+
+def _safe_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _evaluate_loaded_rows(batch_examples: list[dict], loaded: dict) -> tuple[list[dict], list[dict], float, str, str | None]:
+    row_map = _row_map(loaded.get("rows", []))
+
+    accepted_local: list[dict] = []
+    rejected_local: list[dict] = []
+    for idx, ex in enumerate(batch_examples):
+        row = row_map.get(idx, {})
+        row_score = _safe_float(row.get("score_0_10", 0))
+        accept_flag = int(row.get("accept", 0)) if isinstance(row, dict) else 0
+        reason = str(row.get("reason", "")) if isinstance(row, dict) else "missing_row"
+        short_response = len(str(ex.get("response", "")).strip()) < MIN_RESPONSE_CHAR_LENGTH
+        if accept_flag == 1 and row_score >= MIN_GRADING_SCORE and not short_response:
+            accepted_local.append(ex)
+        else:
+            rejected_local.append(
+                {
+                    "idx": idx,
+                    "example": ex,
+                    "score": row_score,
+                    "reason": reason if reason else ("short_response" if short_response else "low_score"),
+                }
+            )
+
+    dataset_score = _safe_float(loaded.get("dataset_score_0_10", 0))
+    notes = str(loaded.get("notes", ""))
+    category = _normalize_category(loaded.get("category"))
+    return accepted_local, rejected_local, dataset_score, notes, category
+
+
+def _build_rejected_payload(rejected: list[dict]) -> list[dict]:
+    return [
+        {
+            "original_idx": row["idx"],
+            "instruction": row["example"].get("instruction", ""),
+            "response": row["example"].get("response", ""),
+            "failure_reason": row["reason"],
+            "failure_score": row["score"],
+        }
+        for row in rejected
+    ]
+
+
+# Grades a batch end-to-end, including one regeneration pass for rejected rows.
+# It is responsible for parser retries, row-level acceptance decisions,
+# score persistence, and returning the filtered examples plus dataset metadata.
 async def run_grading_agent(
     examples: list[dict],
     model: str,
@@ -155,53 +252,9 @@ Rejected examples:
             }
         return out
 
-    def _evaluate_rows(batch_examples: list[dict], loaded: dict):
-        rows = loaded.get("rows", [])
-        if not isinstance(rows, list):
-            rows = []
-        row_map = {}
-        for row in rows:
-            if isinstance(row, dict) and isinstance(row.get("idx"), int):
-                row_map[row["idx"]] = row
-
-        accepted_local = []
-        rejected_local = []
-        for idx, ex in enumerate(batch_examples):
-            row = row_map.get(idx, {})
-            try:
-                row_score = float(row.get("score_0_10", 0))
-            except (TypeError, ValueError):
-                row_score = 0.0
-            accept_flag = int(row.get("accept", 0)) if isinstance(row, dict) else 0
-            reason = str(row.get("reason", "")) if isinstance(row, dict) else "missing_row"
-            short_response = len(str(ex.get("response", "")).strip()) < MIN_RESPONSE_CHAR_LENGTH
-            if accept_flag == 1 and row_score >= MIN_GRADING_SCORE and not short_response:
-                accepted_local.append(ex)
-            else:
-                rejected_local.append(
-                    {
-                        "idx": idx,
-                        "example": ex,
-                        "score": row_score,
-                        "reason": reason if reason else ("short_response" if short_response else "low_score"),
-                    }
-                )
-        try:
-            dataset_score = float(loaded.get("dataset_score_0_10", 0))
-        except (TypeError, ValueError):
-            dataset_score = 0.0
-        notes = str(loaded.get("notes", ""))
-        category = _normalize_category(loaded.get("category"))
-        return accepted_local, rejected_local, dataset_score, notes, category
-
     if not examples:
         logger.saveToLog("[run_grading_agent] No examples passed for grading", "ERROR")
-        return {
-            "accepted_examples": [],
-            "dataset_score": 0.0,
-            "notes": "No examples passed for grading",
-            "category": None,
-        }
+        return _empty_grading_result("No examples passed for grading")
 
     with timer(label=TimedLabel.GRADING_CALL):
         loaded, json_retries, parse_failure = await _grade_batch_with_json_retries(
@@ -215,58 +268,41 @@ Rejected examples:
         saveScore(
             "grading_dataset_score",
             0.0,
-            metadata={
-                "topic": topic,
-                "model": model,
-                "grader_model": GRADING_MODEL,
-                "input_count": len(examples),
-                "accepted_count": 0,
-                "rejected_count": len(examples),
-                "notes": str(parse_failure),
-                "category": None,
-                "run_id": run_id,
-                "dataset_key": dataset_key,
-            },
+            metadata=_grading_score_metadata(
+                topic=topic,
+                model=model,
+                input_count=len(examples),
+                accepted_count=0,
+                rejected_count=len(examples),
+                notes=str(parse_failure),
+                category=None,
+                run_id=run_id,
+                dataset_key=dataset_key,
+            ),
         )
-        return {
-            "accepted_examples": [],
-            "dataset_score": 0.0,
-            "notes": str(parse_failure),
-            "category": None,
-        }
+        return _empty_grading_result(str(parse_failure))
 
-    accepted, rejected, dataset_score, dataset_notes, dataset_category = _evaluate_rows(examples, loaded)
+    accepted, rejected, dataset_score, dataset_notes, dataset_category = _evaluate_loaded_rows(examples, loaded)
 
     # One regeneration pass for rejected items, then one re-grade pass.
     if rejected:
-        rejected_payload = [
-            {
-                "original_idx": r["idx"],
-                "instruction": r["example"].get("instruction", ""),
-                "response": r["example"].get("response", ""),
-                "failure_reason": r["reason"],
-                "failure_score": r["score"],
-            }
-            for r in rejected
-        ]
+        rejected_payload = _build_rejected_payload(rejected)
         try:
             regenerated_map = await _regenerate_rejected_batch(rejected_payload)
             regen_examples = []
-            regen_original_indices = []
             for r in rejected:
                 idx = r["idx"]
                 if idx in regenerated_map:
                     regen_examples.append(regenerated_map[idx])
-                    regen_original_indices.append(idx)
 
             if regen_examples:
                 loaded_regen, retries_regen, parse_fail_regen = await _grade_batch_with_json_retries(
                     regen_examples, stage="grading_regeneration_batch", tag="regenerated"
                 )
                 if not parse_fail_regen and isinstance(loaded_regen, dict):
-                    regen_accepted, _, _, _, _ = _evaluate_rows(regen_examples, loaded_regen)
+                    regen_accepted, _, _, _, _ = _evaluate_loaded_rows(regen_examples, loaded_regen)
                     # Map back accepted regenerated examples to original positions.
-                    for local_idx, ex in enumerate(regen_examples):
+                    for ex in regen_examples:
                         if ex in regen_accepted:
                             accepted.append(ex)
                 else:
@@ -281,18 +317,17 @@ Rejected examples:
     saveScore(
         "grading_dataset_score",
         dataset_score,
-        metadata={
-            "topic": topic,
-            "model": model,
-            "grader_model": GRADING_MODEL,
-            "category": dataset_category,
-            "input_count": len(examples),
-            "accepted_count": len(accepted),
-            "rejected_count": rejected_count,
-            "notes": dataset_notes,
-            "run_id": run_id,
-            "dataset_key": dataset_key,
-        },
+        metadata=_grading_score_metadata(
+            topic=topic,
+            model=model,
+            input_count=len(examples),
+            accepted_count=len(accepted),
+            rejected_count=rejected_count,
+            notes=dataset_notes,
+            category=dataset_category,
+            run_id=run_id,
+            dataset_key=dataset_key,
+        ),
     )
     logger.saveToLog(
         (

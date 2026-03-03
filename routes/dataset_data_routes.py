@@ -38,6 +38,28 @@ def _log_route_error(event: str, exc: Exception, *, log_type: str = "ERROR", **f
     logger.log_event(event, log_type, error=str(exc), error_type=type(exc).__name__, **fields)
 
 
+def _category_rows() -> list[dict[str, str]]:
+    return [
+        {"value": category, "label": category.replace("_", " ").title()}
+        for category in CATEGORY_TAXONOMY
+    ]
+
+
+def _document_summary(document: SourceDocument) -> dict:
+    return {
+        "id": document.id,
+        "name": document.name,
+        "file_type": document.file_type,
+        "char_count": document.char_count,
+        "chunk_count": len(document.chunks),
+        "created_at": document.created_at.isoformat() if document.created_at else None,
+        "source_material_ref": f"doc:{document.id}",
+    }
+
+
+# Registers the full dataset/data API surface for CRUD, intake, import/export,
+# cost summaries, and source document operations. The route bodies stay here,
+# while heavier ingest/import/export workflows are delegated into services.
 def register_data_routes(router: APIRouter):
 
     @router.get("/categories")
@@ -47,7 +69,7 @@ def register_data_routes(router: APIRouter):
             message="Successfully returned dataset categories.",
             statusCode=200,
             data={
-                "categories": [{"value": category, "label": category.replace("_", " ").title()} for category in CATEGORY_TAXONOMY],
+                "categories": _category_rows(),
                 "count": len(CATEGORY_TAXONOMY),
             },
         )
@@ -146,18 +168,7 @@ def register_data_routes(router: APIRouter):
             documents = session.exec(
                 select(SourceDocument).order_by(SourceDocument.created_at.desc()).limit(limit)
             ).all()
-            rows = [
-                {
-                    "id": document.id,
-                    "name": document.name,
-                    "file_type": document.file_type,
-                    "char_count": document.char_count,
-                    "chunk_count": len(document.chunks),
-                    "created_at": document.created_at.isoformat() if document.created_at else None,
-                    "source_material_ref": f"doc:{document.id}",
-                }
-                for document in documents
-            ]
+            rows = [_document_summary(document) for document in documents]
             return response_builder(
                 success=True,
                 message="Successfully returned source documents.",
@@ -183,15 +194,7 @@ def register_data_routes(router: APIRouter):
                 message="Successfully returned source document.",
                 statusCode=200,
                 data={
-                    "document": {
-                        "id": document.id,
-                        "name": document.name,
-                        "file_type": document.file_type,
-                        "char_count": document.char_count,
-                        "chunk_count": len(document.chunks),
-                        "created_at": document.created_at.isoformat() if document.created_at else None,
-                        "source_material_ref": f"doc:{document.id}",
-                    },
+                    "document": _document_summary(document),
                     "chunks": [
                         {
                             "id": chunk.id,

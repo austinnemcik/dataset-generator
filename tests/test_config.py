@@ -1,3 +1,5 @@
+import pytest
+
 from app.core.config import _as_bool, get_settings
 
 
@@ -15,4 +17,19 @@ def test_get_settings_uses_defaults_when_optional_env_absent(monkeypatch):
     settings = get_settings()
     assert settings.server_url == "http://localhost:8000"
     assert settings.log_level == "INFO"
+
+
+def test_calculate_price_returns_numeric_values(monkeypatch):
+    from agent import settings
+
+    monkeypatch.setitem(
+        settings.MODEL_PRICING,
+        "test-model",
+        {"prompt": 0.1, "completion": 0.2},
+    )
+    total, input_cost, output_cost = settings.calculate_price(3, 4, "test-model")
+
+    assert total == pytest.approx(1.1)
+    assert input_cost == pytest.approx(0.3)
+    assert output_cost == pytest.approx(0.8)
 

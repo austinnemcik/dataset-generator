@@ -1,14 +1,33 @@
 import numpy as np
 from app.core.generics import TimedLabel, timer
-import torch
 from sentence_transformers import SentenceTransformer
 import app.core.logger as logger
 
-from .settings import THRESHOLD, client
+from .settings import THRESHOLD
 
-model = SentenceTransformer("all-MiniLM-L6-v2", device="cuda")
+_model: SentenceTransformer | None = None
+
+
+def get_embedding_model() -> SentenceTransformer:
+    global _model
+    if _model is None:
+        logger.log_event(
+            "embedding_model.load_start",
+            level="INFO",
+            model_name="all-MiniLM-L6-v2",
+            device="cuda",
+        )
+        _model = SentenceTransformer("all-MiniLM-L6-v2", device="cuda")
+        logger.log_event(
+            "embedding_model.load_complete",
+            level="INFO",
+            model_name="all-MiniLM-L6-v2",
+            device="cuda",
+        )
+    return _model
 
 def get_embedding(text: str):
+    model = get_embedding_model()
     with timer(TimedLabel.EMBEDDING_CALL):
         embedding = model.encode(text)
     return embedding

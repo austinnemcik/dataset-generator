@@ -2,7 +2,14 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator, model_validator
 
-from agent import AgentType
+from app.core.enums import AgentType
+
+
+def _clean_required_text(value: str, *, field_name: str, min_length: int = 2) -> str:
+    cleaned = value.strip()
+    if len(cleaned) < min_length:
+        raise ValueError(f"{field_name} must contain at least {min_length} non-space characters.")
+    return cleaned
 
 
 class Example(BaseModel):
@@ -33,10 +40,7 @@ class IngestExamples(BaseModel):
     @field_validator("prompt", "dataset_description", "dataset_name")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
-        cleaned = value.strip()
-        if len(cleaned) < 2:
-            raise ValueError("value must contain at least 2 non-space characters.")
-        return cleaned
+        return _clean_required_text(value, field_name="value")
 
 
 class BatchGeneration(BaseModel):
@@ -126,10 +130,7 @@ class Generation(BaseModel):
     @field_validator("topic")
     @classmethod
     def validate_topic(cls, value: str) -> str:
-        cleaned = value.strip()
-        if len(cleaned) < 2:
-            raise ValueError("topic must contain at least 2 non-space characters.")
-        return cleaned
+        return _clean_required_text(value, field_name="topic")
 
     @field_validator("amount")
     @classmethod

@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import httpx
 from funkybob import RandomNameGenerator
@@ -28,6 +29,78 @@ from services.import_service import (
 )
 
 
+HistoryRow = dict[str, Any]
+
+
+def _export_history_row(row: ExportHistory) -> HistoryRow:
+    return {
+        "id": row.id,
+        "status": row.status,
+        "export_format": row.export_format,
+        "dataset_ids": json.loads(row.dataset_ids_json),
+        "options": json.loads(row.options_json) if row.options_json else {},
+        "output_filename": row.output_filename,
+        "has_artifact": bool(row.output_path and os.path.exists(row.output_path)),
+        "total_examples": row.total_examples,
+        "train_examples": row.train_examples,
+        "val_examples": row.val_examples,
+        "error": row.error,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _import_history_row(row: ImportHistory) -> HistoryRow:
+    return {
+        "id": row.id,
+        "status": row.status,
+        "source_url": row.source_url,
+        "method": row.method,
+        "detected_format": row.detected_format,
+        "dataset_id": row.dataset_id,
+        "dataset_name": row.dataset_name,
+        "source_label": row.source_label,
+        "fetched_records": row.fetched_records,
+        "normalized_records": row.normalized_records,
+        "imported_records": row.imported_records,
+        "duplicate_records": row.duplicate_records,
+        "invalid_records": row.invalid_records,
+        "error": row.error,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _file_import_request(
+    *,
+    filename: str,
+    dataset_name: str | None,
+    dataset_description: str | None,
+    model: str | None,
+    prompt: str,
+    dedupe_threshold: float,
+    dedupe_against_existing: bool,
+    dedupe_within_payload: bool,
+    source_label: str | None,
+    raw_record_count: int,
+) -> ExternalImportRequest:
+    effective_record_count = max(raw_record_count, 1)
+    return ExternalImportRequest(
+        url=f"upload://{filename}",
+        dataset_name=dataset_name,
+        dataset_description=dataset_description,
+        model=model,
+        prompt=prompt,
+        source_label=source_label,
+        dedupe_threshold=dedupe_threshold,
+        dedupe_against_existing=dedupe_against_existing,
+        dedupe_within_payload=dedupe_within_payload,
+        max_records=effective_record_count,
+        chunk_size=min(effective_record_count, 200),
+    )
+
+
+# Ingests normalized examples into a Dataset while enforcing local validation,
+# semantic deduplication, and idempotent run reuse. It also records ingest
+# diagnostics so batch failures can be explained after the fact.
 def ingest_examples(session: Session, body: IngestExamples) -> dict:
     incoming_count = len(body.example) if body.example else 0
     dataset_name = body.dataset_name or str(RandomNameGenerator())
@@ -221,49 +294,17 @@ def export_single_dataset(session: Session, dataset_id: int) -> tuple[str, str]:
 
 def get_export_history_rows(session: Session, limit: int) -> list[dict]:
     rows = session.exec(select(ExportHistory).order_by(ExportHistory.created_at.desc()).limit(limit)).all()
-    return [
-        {
-            "id": row.id,
-            "status": row.status,
-            "export_format": row.export_format,
-            "dataset_ids": json.loads(row.dataset_ids_json),
-            "options": json.loads(row.options_json) if row.options_json else {},
-            "output_filename": row.output_filename,
-            "has_artifact": bool(row.output_path and os.path.exists(row.output_path)),
-            "total_examples": row.total_examples,
-            "train_examples": row.train_examples,
-            "val_examples": row.val_examples,
-            "error": row.error,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-        }
-        for row in rows
-    ]
+    return [_export_history_row(row) for row in rows]
 
 
 def get_import_history_rows(session: Session, limit: int) -> list[dict]:
     rows = session.exec(select(ImportHistory).order_by(ImportHistory.created_at.desc()).limit(limit)).all()
-    return [
-        {
-            "id": row.id,
-            "status": row.status,
-            "source_url": row.source_url,
-            "method": row.method,
-            "detected_format": row.detected_format,
-            "dataset_id": row.dataset_id,
-            "dataset_name": row.dataset_name,
-            "source_label": row.source_label,
-            "fetched_records": row.fetched_records,
-            "normalized_records": row.normalized_records,
-            "imported_records": row.imported_records,
-            "duplicate_records": row.duplicate_records,
-            "invalid_records": row.invalid_records,
-            "error": row.error,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-        }
-        for row in rows
-    ]
+    return [_import_history_row(row) for row in rows]
 
 
+# Fetches an external dataset payload, normalizes it into internal examples,
+# supports preview-only inspection, and persists both the dataset and import
+# history row when the import completes successfully.
 async def import_external_dataset_workflow(session: Session, body: ExternalImportRequest) -> dict:
     logger.log_event(
         "external_import.start",
@@ -421,11 +462,9 @@ def import_example_file_workflow(
     dedupe_within_payload: bool = True,
     source_label: str | None = None,
 ) -> dict:
-    from routes.dataset_models import ExternalImportRequest
-
     raw_records = parse_file_for_examples(contents, filename)
-    temp_request = ExternalImportRequest(
-        url=f"upload://{filename}",
+    temp_request = _file_import_request(
+        filename=filename,
         dataset_name=dataset_name,
         dataset_description=dataset_description,
         model=model,
@@ -434,8 +473,7 @@ def import_example_file_workflow(
         dedupe_threshold=dedupe_threshold,
         dedupe_against_existing=dedupe_against_existing,
         dedupe_within_payload=dedupe_within_payload,
-        max_records=max(len(raw_records), 1),
-        chunk_size=min(max(len(raw_records), 1), 200),
+        raw_record_count=len(raw_records),
     )
     detected_format = detect_format(raw_records, temp_request.field_mapper)
     normalized_rows, invalid_records = normalize_import_records(

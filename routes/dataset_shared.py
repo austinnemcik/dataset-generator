@@ -25,6 +25,47 @@ except ImportError:
             )
 
 
+def _parse_source_material_items(
+    source_material: list[int | str],
+) -> tuple[list[int], list[int], list[str]]:
+    dataset_ids: list[int] = []
+    document_ids: list[int] = []
+    text_blocks: list[str] = []
+    seen_ids: set[int] = set()
+
+    for item in source_material:
+        if isinstance(item, int):
+            if item in seen_ids:
+                continue
+            seen_ids.add(item)
+            dataset_ids.append(item)
+            continue
+
+        if not isinstance(item, str):
+            raise ValueError("source_material list values must be integers or strings.")
+
+        cleaned = item.strip()
+        if not cleaned:
+            continue
+
+        lowered = cleaned.casefold()
+        if lowered.startswith("doc:") or lowered.startswith("document:"):
+            _, _, raw_id = cleaned.partition(":")
+            try:
+                document_id = int(raw_id.strip())
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid source document reference: {cleaned}") from exc
+            if document_id in seen_ids:
+                continue
+            seen_ids.add(document_id)
+            document_ids.append(document_id)
+            continue
+
+        text_blocks.append(cleaned)
+
+    return dataset_ids, document_ids, text_blocks
+
+
 def resolve_source_material(
     source_material: str | list[int | str] | None,
     session: Session,
@@ -37,35 +78,7 @@ def resolve_source_material(
     if not isinstance(source_material, list):
         raise ValueError("source_material must be a string or list of dataset IDs/text blocks.")
 
-    dataset_ids: list[int] = []
-    document_ids: list[int] = []
-    text_blocks: list[str] = []
-    seen_ids: set[int] = set()
-    for item in source_material:
-        if isinstance(item, int):
-            if item in seen_ids:
-                continue
-            seen_ids.add(item)
-            dataset_ids.append(item)
-            continue
-        if isinstance(item, str):
-            cleaned = item.strip()
-            if cleaned:
-                lowered = cleaned.casefold()
-                if lowered.startswith("doc:") or lowered.startswith("document:"):
-                    _, _, raw_id = cleaned.partition(":")
-                    try:
-                        doc_id = int(raw_id.strip())
-                    except (TypeError, ValueError) as exc:
-                        raise ValueError(f"Invalid source document reference: {cleaned}") from exc
-                    if doc_id in seen_ids:
-                        continue
-                    seen_ids.add(doc_id)
-                    document_ids.append(doc_id)
-                    continue
-                text_blocks.append(cleaned)
-            continue
-        raise ValueError("source_material list values must be integers or strings.")
+    dataset_ids, document_ids, text_blocks = _parse_source_material_items(source_material)
 
     if not dataset_ids and not document_ids and not text_blocks:
         raise ValueError("source_material list cannot be empty.")
@@ -126,6 +139,7 @@ def resolve_source_material(
                 context_lines.append(chunk.content)
 
     return "\n".join(context_lines), dataset_ids, len(text_blocks)
+
 
 def build_stream_item_payload(item: dict) -> dict:
     run_id = item.get("run_id")

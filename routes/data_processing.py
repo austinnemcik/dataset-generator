@@ -1,6 +1,9 @@
 from app.core.utils import extract_records, get_path_value, safe_json_dump
 
 
+SCRAPER_SUMMARY_INSTRUCTION = "Summarize the scraped page content into a concise, accurate answer."
+
+
 def normalize_alpaca_row(row: dict) -> dict | None:
     instruction = str(row.get("instruction", "")).strip()
     input_text = str(row.get("input", "")).strip()
@@ -130,9 +133,7 @@ def normalize_scraper_text(text: str, response_char_limit: int) -> tuple[str, st
     if len(normalized) < 8:
         return None
     snippet = normalized[:response_char_limit]
-    instruction = "Summarize the scraped page content into a concise, accurate answer."
-    response = snippet
-    return instruction, response
+    return SCRAPER_SUMMARY_INSTRUCTION, snippet
 
 
 def scraper_reference_card() -> dict:
@@ -175,7 +176,7 @@ def upload_reference_card() -> dict:
         "title": "File Intake Endpoint",
         "method": "POST",
         "endpoint": "/dataset/intake/upload",
-        "description": "Accepts uploaded files and stores them either as training-example datasets or chunked source documents.",
+        "description": "Accepts uploaded files and stores them as either training-example datasets or chunked source documents.",
         "curl": (
             "curl -X POST http://localhost:8000/dataset/intake/upload "
             "-F \"file=@./examples.jsonl\" "

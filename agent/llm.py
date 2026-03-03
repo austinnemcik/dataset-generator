@@ -14,6 +14,10 @@ def _summarize_for_log(text: str, max_chars: int = 600) -> str:
     return f"{cleaned[:max_chars]}... [truncated {len(cleaned) - max_chars} chars]"
 
 
+def _format_usd(value: float) -> str:
+    return f"{value:.8f}"
+
+
 async def run_agent_async(
     *,
     system_prompt: str,
@@ -62,7 +66,7 @@ async def run_agent_async(
             f"stage={stage} "
             f"model={model} "
             f"tokens={response.usage.total_tokens} "
-            f"cost_usd={{total:{total_cost},input:{input_cost},output:{output_cost}}} "
+            f"cost_usd={{total:{_format_usd(total_cost)},input:{_format_usd(input_cost)},output:{_format_usd(output_cost)}}} "
             f"prompt_chars={len((system_prompt or '')) + len((user_prompt or ''))} "
             f"response_chars={len((response.choices[0].message.content or ''))} "
             f"response_preview={_summarize_for_log(response.choices[0].message.content, 180)}"
@@ -77,7 +81,7 @@ async def run_agent_async(
                 topic=topic,
                 model=model,
                 stage=stage,
-                usd_total=float(str(total_cost).replace("$", "")),
+                usd_total=float(total_cost),
                 prompt_tokens=int(response.usage.prompt_tokens),
                 completion_tokens=int(response.usage.completion_tokens),
                 total_tokens=int(response.usage.total_tokens),

@@ -11,6 +11,28 @@ from routes.dataset_shared import parse_embedding
 import app.core.logger as logger
 
 
+def _explicit_merge_pool(dataset_ids: list[int] | None) -> list[int]:
+    explicit_pool: list[int] = []
+    seen_ids: set[int] = set()
+    for dataset_id in dataset_ids or []:
+        if dataset_id in seen_ids:
+            continue
+        seen_ids.add(dataset_id)
+        explicit_pool.append(dataset_id)
+    return explicit_pool
+
+
+def _combined_dataset_metadata(all_datasets: list[Dataset]) -> tuple[float, float, float, str | None, str | None]:
+    generation_cost = round(sum(float(ds.generation_cost or 0.0) for ds in all_datasets), 8)
+    grading_cost = round(sum(float(ds.grading_cost or 0.0) for ds in all_datasets), 8)
+    total_cost = round(sum(float(ds.total_cost or 0.0) for ds in all_datasets), 8)
+    models = sorted({str(ds.model).strip() for ds in all_datasets if getattr(ds, "model", None)})
+    categories = sorted({str(ds.category).strip() for ds in all_datasets if getattr(ds, "category", None)})
+    merged_model = ",".join(models) if models else None
+    merged_category = categories[0] if len(categories) == 1 else None
+    return generation_cost, grading_cost, total_cost, merged_model, merged_category
+
+
 def discover_merge_pools(
     session: Session, dataset_similarity_threshold: float, merge_run_id: str | None = None
 ) -> tuple[list[list[int]], int]:
@@ -93,13 +115,7 @@ def register_merge_routes(router: APIRouter):
                 raise ValueError("dataset_similarity_threshold must be in the range (0, 1].")
 
             if body.dataset_ids:
-                seen_ids: set[int] = set()
-                explicit_pool = []
-                for dataset_id in body.dataset_ids:
-                    if dataset_id in seen_ids:
-                        continue
-                    seen_ids.add(dataset_id)
-                    explicit_pool.append(dataset_id)
+                explicit_pool = _explicit_merge_pool(body.dataset_ids)
                 pools = [explicit_pool] if explicit_pool else []
                 skipped_without_embeddings = 0
                 discovery_mode = False
@@ -161,15 +177,14 @@ def register_merge_routes(router: APIRouter):
                     logger.saveToLog(f"{log_prefix} Skipping pool_index={pool_idx} with no examples. pool={pool}", "WARNING")
                     continue
 
-                pool_generation_cost = round(sum(float(ds.generation_cost or 0.0) for ds in all_datasets), 8)
-                pool_grading_cost = round(sum(float(ds.grading_cost or 0.0) for ds in all_datasets), 8)
-                pool_total_cost = round(sum(float(ds.total_cost or 0.0) for ds in all_datasets), 8)
+                (
+                    pool_generation_cost,
+                    pool_grading_cost,
+                    pool_total_cost,
+                    merged_model,
+                    merged_category,
+                ) = _combined_dataset_metadata(all_datasets)
                 pool_models = sorted({str(ds.model).strip() for ds in all_datasets if getattr(ds, "model", None)})
-                pool_categories = sorted(
-                    {str(ds.category).strip() for ds in all_datasets if getattr(ds, "category", None)}
-                )
-                merged_model = ",".join(pool_models) if pool_models else None
-                merged_category = pool_categories[0] if len(pool_categories) == 1 else None
 
                 total_examples_before_dedupe += len(all_examples)
                 deduped_examples: list[TrainingExample] = []

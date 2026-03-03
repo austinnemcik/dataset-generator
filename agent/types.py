@@ -1,14 +1,3 @@
-from enum import Enum
+from app.core.enums import AgentType
 
-
-class AgentType(str, Enum):
-    qa = "qa"
-    instruction_following = "instruction_following"
-    domain_specialist = "domain_specialist"
-    style = "style"
-    adversarial = "adversarial"
-    conversation = "conversation"
-
-
-
-
+__all__ = ["AgentType"]

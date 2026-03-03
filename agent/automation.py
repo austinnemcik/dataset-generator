@@ -30,6 +30,27 @@ _ACTIVE_BATCH_RUNS: set[str] = set()
 _ACTIVE_BATCH_RUNS_GUARD = asyncio.Lock()
 
 
+def _validate_generation_request(
+    *,
+    amount: int,
+    ex_amt: int,
+    max_concurrency: int | None = None,
+    max_retries: int,
+    retry_backoff_seconds: float,
+) -> None:
+    if amount <= 0 or ex_amt <= 0:
+        raise ValueError("amount and ex_amt must both be greater than 0")
+    if max_concurrency is not None:
+        if max_concurrency <= 0:
+            raise ValueError("max_concurrency must be greater than 0")
+        if max_concurrency > 50:
+            raise ValueError("max_concurrency must be less than or equal to 50")
+    if max_retries < 0:
+        raise ValueError("max_retries cannot be negative")
+    if retry_backoff_seconds < 0:
+        raise ValueError("retry_backoff_seconds cannot be negative")
+
+
 def get_random_agent(rng: random.Random | None = None) -> AgentType:
     picker = rng or random
     while True:
@@ -60,6 +81,75 @@ def _suggest_topic_count(amount: int) -> int:
     return max(1, min(amount, max(3, int(amount**0.5) * 2)))
 
 
+def _retry_delay_seconds(*, attempts: int, retry_backoff_seconds: float) -> float:
+    return retry_backoff_seconds * (2 ** (attempts - 1))
+
+
+def _build_run_plan_item(
+    *,
+    item_index: int,
+    run_id: str,
+    requested_topic: str,
+    topic: str,
+    resolved_agent: AgentType,
+    ex_amt: int,
+    max_retries: int,
+    retry_backoff_seconds: float,
+    source_material: str | None,
+    model: str | None,
+    seed: int,
+    slot_key: str | None,
+) -> dict:
+    return {
+        "item_index": item_index,
+        "run_id": run_id,
+        "dataset_key": f"{run_id}: {topic}",
+        "slot_key": slot_key,
+        "requested_topic": requested_topic,
+        "topic": topic,
+        "agent": resolved_agent.value,
+        "ex_amt": ex_amt,
+        "max_retries": max_retries,
+        "retry_backoff_seconds": retry_backoff_seconds,
+        "source_material": source_material,
+        "model": model,
+        "seed": seed,
+    }
+
+
+def _build_batch_request_payload(
+    *,
+    topic: str,
+    agent: AgentType | None,
+    model: str | None,
+    source_material: str | None,
+    amount: int,
+    ex_amt: int,
+    random_agent: bool,
+    max_concurrency: int,
+    max_retries: int,
+    retry_backoff_seconds: float,
+    seed: int | None,
+    planned_topics: list[str],
+    slot_key: str | None,
+) -> dict:
+    return {
+        "topic": topic,
+        "agent": agent.value if agent else None,
+        "model": model,
+        "source_material": source_material,
+        "amount": amount,
+        "ex_amt": ex_amt,
+        "random_agent": random_agent,
+        "max_concurrency": max_concurrency,
+        "max_retries": max_retries,
+        "retry_backoff_seconds": retry_backoff_seconds,
+        "seed": seed,
+        "planned_topics": planned_topics,
+        "slot_key": slot_key,
+    }
+
+
 async def build_generation_plan(
     *,
     amount: int,
@@ -74,12 +164,12 @@ async def build_generation_plan(
     seed: int | None = None,
     slot_key: str | None = None,
 ) -> dict:
-    if amount <= 0 or ex_amt <= 0:
-        raise ValueError("amount and ex_amt must both be greater than 0")
-    if max_retries < 0:
-        raise ValueError("max_retries cannot be negative")
-    if retry_backoff_seconds < 0:
-        raise ValueError("retry_backoff_seconds cannot be negative")
+    _validate_generation_request(
+        amount=amount,
+        ex_amt=ex_amt,
+        max_retries=max_retries,
+        retry_backoff_seconds=retry_backoff_seconds,
+    )
 
     rng = random.Random(seed) if seed is not None else random.Random()
     planner_run_id = new_run_id()
@@ -113,28 +203,30 @@ async def build_generation_plan(
         run_id = new_run_id()
         run_topic = planned_topics[i % len(planned_topics)]
         resolved_agent = get_random_agent(rng) if random_agent else (agent or AgentType.qa)
-        dataset_key = f"{run_id}: {run_topic}"
         run_seed = rng.randint(0, 2_147_483_647)
         run_plan.append(
-            {
-                "item_index": i,
-                "run_id": run_id,
-                "dataset_key": dataset_key,
-                "slot_key": slot_key,
-                "requested_topic": topic,
-                "topic": run_topic,
-                "agent": resolved_agent.value,
-                "ex_amt": ex_amt,
-                "max_retries": max_retries,
-                "retry_backoff_seconds": retry_backoff_seconds,
-                "source_material": source_material,
-                "model": model,
-                "seed": run_seed,
-            }
+            _build_run_plan_item(
+                item_index=i,
+                run_id=run_id,
+                requested_topic=topic,
+                topic=run_topic,
+                resolved_agent=resolved_agent,
+                ex_amt=ex_amt,
+                max_retries=max_retries,
+                retry_backoff_seconds=retry_backoff_seconds,
+                source_material=source_material,
+                model=model,
+                seed=run_seed,
+                slot_key=slot_key,
+            )
         )
 
     return {"planned_topics": planned_topics, "run_plan": run_plan}
 
+
+# Executes one persisted batch item from claim through finalization.
+# This function coordinates retry handling, generation, ingest, and
+# cooperative pause/stop behavior against the current batch control state.
 async def _execute_batch_item(item_id: int) -> dict | None:
     claimed = claim_existing_dataset_if_present(item_id)
     if claimed:
@@ -232,7 +324,12 @@ async def _execute_batch_item(item_id: int) -> dict | None:
             )
             if terminal:
                 return result
-            await asyncio.sleep(item_data["retry_backoff_seconds"] * (2 ** (item_data["attempts"] - 1)))
+            await asyncio.sleep(
+                _retry_delay_seconds(
+                    attempts=item_data["attempts"],
+                    retry_backoff_seconds=item_data["retry_backoff_seconds"],
+                )
+            )
         except Exception as e:
             saveToLog(
                 f"[start_generation] Unexpected error run_id={item_data['run_id']} attempt={item_data['attempts']}: {e}",
@@ -249,7 +346,12 @@ async def _execute_batch_item(item_id: int) -> dict | None:
             )
             if terminal:
                 return result
-            await asyncio.sleep(item_data["retry_backoff_seconds"] * (2 ** (item_data["attempts"] - 1)))
+            await asyncio.sleep(
+                _retry_delay_seconds(
+                    attempts=item_data["attempts"],
+                    retry_backoff_seconds=item_data["retry_backoff_seconds"],
+                )
+            )
 
 
 async def resume_batch_run(batch_run_id: str, *, max_concurrency: int | None = None) -> dict:
@@ -353,16 +455,13 @@ async def start_generation(
     batch_run_id: str | None = None,
     slot_key: str | None = None,
 ):
-    if amount <= 0 or ex_amt <= 0:
-        raise ValueError("amount and ex_amt must both be greater than 0")
-    if max_concurrency <= 0:
-        raise ValueError("max_concurrency must be greater than 0")
-    if max_concurrency > 50:
-        raise ValueError("max_concurrency must be less than or equal to 50")
-    if max_retries < 0:
-        raise ValueError("max_retries cannot be negative")
-    if retry_backoff_seconds < 0:
-        raise ValueError("retry_backoff_seconds cannot be negative")
+    _validate_generation_request(
+        amount=amount,
+        ex_amt=ex_amt,
+        max_concurrency=max_concurrency,
+        max_retries=max_retries,
+        retry_backoff_seconds=retry_backoff_seconds,
+    )
 
     if batch_run_id:
         return await resume_batch_run(batch_run_id, max_concurrency=max_concurrency)
@@ -380,21 +479,21 @@ async def start_generation(
         seed=seed,
         slot_key=slot_key,
     )
-    request_payload = {
-        "topic": topic,
-        "agent": agent.value if agent else None,
-        "model": model,
-        "source_material": source_material,
-        "amount": amount,
-        "ex_amt": ex_amt,
-        "random_agent": random_agent,
-        "max_concurrency": max_concurrency,
-        "max_retries": max_retries,
-        "retry_backoff_seconds": retry_backoff_seconds,
-        "seed": seed,
-        "planned_topics": plan["planned_topics"],
-        "slot_key": slot_key,
-    }
+    request_payload = _build_batch_request_payload(
+        topic=topic,
+        agent=agent,
+        model=model,
+        source_material=source_material,
+        amount=amount,
+        ex_amt=ex_amt,
+        random_agent=random_agent,
+        max_concurrency=max_concurrency,
+        max_retries=max_retries,
+        retry_backoff_seconds=retry_backoff_seconds,
+        seed=seed,
+        planned_topics=plan["planned_topics"],
+        slot_key=slot_key,
+    )
     batch_run_id = create_batch_run(
         request_payload=request_payload,
         run_plan=plan["run_plan"],

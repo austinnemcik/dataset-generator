@@ -52,15 +52,15 @@ def load_pricing():
             continue
 
 
-def calculate_price(input_tokens: int, output_tokens: int, model: str):
+def calculate_price(input_tokens: int, output_tokens: int, model: str) -> tuple[float, float, float]:
     pricing = MODEL_PRICING.get(model)
     if not pricing or pricing["prompt"] < 0:
         logger.saveToLog(f"Pricing not found for model: {model}", "WARNING")
-        return "$0.0", "$0.0", "$0.0"
+        return 0.0, 0.0, 0.0
     input_price = pricing["prompt"] * input_tokens
     output_price = pricing["completion"] * output_tokens
     total_price = input_price + output_price
-    return f"${total_price}", f"${input_price}", f"${output_price}"
+    return total_price, input_price, output_price
 
 
 

@@ -17,6 +17,9 @@ from routes.dataset_shared import (
 )
 import app.core.logger as logger
 
+RunAllocation = dict[str, object]
+BatchSummary = dict[str, object]
+
 
 def _source_material_mode(
     resolved_source_material: str | None,
@@ -38,9 +41,9 @@ def _build_run_allocations(
     topics: list[str],
     agent_types: list | None,
     random_agent: bool,
-) -> tuple[list[dict], dict[str, int], dict[str, int]]:
+) -> tuple[list[RunAllocation], dict[str, int], dict[str, int]]:
     iteration_agents = [None] if random_agent else list(agent_types or [])
-    allocation_slots: list[dict] = []
+    allocation_slots: list[RunAllocation] = []
     for topic_index, topic_name in enumerate(topics):
         for agent_index, selected_agent in enumerate(iteration_agents):
             allocation_slots.append(
@@ -68,18 +71,18 @@ def _build_run_allocations(
 
 def _aggregate_batch_summary(
     *,
-    per_slot_summaries: list[dict],
+    per_slot_summaries: list[BatchSummary],
     topics: list[str],
     agent_types: list,
     random_agent: bool,
     source_material_dataset_ids: list[int],
     source_material_text_block_count: int,
     resolved_source_material: str | None,
-    run_allocations: list[dict],
+    run_allocations: list[RunAllocation],
     topic_allocations: dict[str, int],
     agent_allocations: dict[str, int],
     max_concurrency: int,
-) -> dict:
+) -> BatchSummary:
     return {
         "requested_runs": sum(summary.get("requested_runs", 0) for summary in per_slot_summaries),
         "generated": sum(summary.get("generated", 0) for summary in per_slot_summaries),
@@ -159,17 +162,17 @@ def register_batch_routes(router: APIRouter):
                 slot_parallelism = min(len(run_allocations), max_concurrency)
                 per_slot_concurrency = max(1, max_concurrency // max(1, slot_parallelism))
 
-                async def _run_slot(slot: dict):
+                async def _run_slot(slot: RunAllocation) -> BatchSummary:
                     selected_agent = slot["agent"]
                     topic_seed = (
-                        seed + (slot["topic_index"] * 100) + slot["agent_index"]
+                        seed + (int(slot["topic_index"]) * 100) + int(slot["agent_index"])
                         if seed is not None
                         else None
                     )
-                    slot_max_concurrency = min(per_slot_concurrency, slot["amount"])
+                    slot_max_concurrency = min(per_slot_concurrency, int(slot["amount"]))
                     summary = await start_generation(
-                        amount=slot["amount"],
-                        topic=slot["topic"],
+                        amount=int(slot["amount"]),
+                        topic=str(slot["topic"]),
                         agent=selected_agent,
                         model=model,
                         source_material=resolved_source_material,

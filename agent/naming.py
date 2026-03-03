@@ -9,6 +9,45 @@ from .prompts import load_prompt
 from .settings import MAX_NAMING_JSON_RETRIES, NAMING_MODEL
 
 
+def _parse_naming_metadata(raw_result: str) -> dict[str, str] | None:
+    meta = parse_json_with_fallback(raw_result)
+    if not isinstance(meta, dict):
+        return None
+
+    name = str(meta.get("name", "")).strip()
+    description = str(meta.get("description", "")).strip()
+    if not name or not description:
+        return None
+    return {"name": name, "description": description}
+
+
+def _normalize_topic_list(parsed: object, *, topic_count: int, fallback_topic: str) -> list[str]:
+    topics: list[str] = []
+    if isinstance(parsed, dict):
+        raw = parsed.get("topics", [])
+        if isinstance(raw, list):
+            topics = [str(item).strip() for item in raw if str(item).strip()]
+    elif isinstance(parsed, list):
+        topics = [str(item).strip() for item in parsed if str(item).strip()]
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for topic in topics:
+        key = topic.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(topic)
+        if len(deduped) >= topic_count:
+            break
+
+    if not deduped:
+        return [fallback_topic]
+    while len(deduped) < topic_count:
+        deduped.append(fallback_topic)
+    return deduped[:topic_count]
+
+
 async def run_naming_agent(
     examples: list[dict],
     *,
@@ -52,7 +91,7 @@ async def run_naming_agent(
             )
 
             try:
-                meta = parse_json_with_fallback(naming_result)
+                meta = _parse_naming_metadata(naming_result)
             except json.JSONDecodeError as e:
                 parse_errors.append(str(e))
                 logger.saveToLog(
@@ -61,22 +100,13 @@ async def run_naming_agent(
                 )
                 continue
 
-            if not isinstance(meta, dict):
+            if meta is None:
                 logger.saveToLog(
-                    f"[run_naming_agent] Parsed payload is not an object attempt={attempt + 1}/{MAX_NAMING_JSON_RETRIES + 1}",
+                    f"[run_naming_agent] Missing required metadata attempt={attempt + 1}/{MAX_NAMING_JSON_RETRIES + 1}",
                     "WARNING",
                 )
                 continue
-
-            name = str(meta.get("name", "")).strip()
-            description = str(meta.get("description", "")).strip()
-            if name and description:
-                return {"name": name, "description": description}
-
-            logger.saveToLog(
-                f"[run_naming_agent] Missing required metadata attempt={attempt + 1}/{MAX_NAMING_JSON_RETRIES + 1}",
-                "WARNING",
-            )
+            return meta
 
     logger.saveToLog("[run_naming_agent] No valid metadata after retries", "ERROR")
     if parse_errors:
@@ -125,32 +155,7 @@ Existing dataset names JSON:
     )
 
     parsed = parse_json_with_fallback(result)
-    topics: list[str] = []
-    if isinstance(parsed, dict):
-        raw = parsed.get("topics", [])
-        if isinstance(raw, list):
-            topics = [str(item).strip() for item in raw if str(item).strip()]
-    elif isinstance(parsed, list):
-        topics = [str(item).strip() for item in parsed if str(item).strip()]
-
-    # Normalize to exact length and keep base topic present as fallback.
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for t in topics:
-        key = t.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(t)
-        if len(deduped) >= topic_count:
-            break
-
-    if not deduped:
-        return [topic]
-    if len(deduped) < topic_count:
-        while len(deduped) < topic_count:
-            deduped.append(topic)
-    return deduped[:topic_count]
+    return _normalize_topic_list(parsed, topic_count=topic_count, fallback_topic=topic)
 
 
 
