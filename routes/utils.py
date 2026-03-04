@@ -15,6 +15,8 @@ def get_models(query: str, limit: int = 50):
         models = get_models_cached()
     except RuntimeError as e:
         return response_builder(success=False, message=str(e), statusCode=500)
+    if limit <= 0:
+        limit = len(models)
     if not q:
         return [m["id"] for m in models[:limit]]
     results = [m for m in models if q in m["id"].lower()]

@@ -18,12 +18,18 @@ def json_load(raw: str | None, fallback):
 
 
 def result_from_item(item: BatchRunItem) -> dict:
+    if item.status == "completed":
+        result_status = "saved"
+    elif item.status == "failed":
+        result_status = "failed"
+    else:
+        result_status = item.status
     return {
         "index": item.item_index,
         "run_id": item.run_id,
         "dataset_key": item.dataset_key,
         "agent": item.agent,
-        "status": "saved" if item.status == "completed" else "failed",
+        "status": result_status,
         "attempts": item.attempts,
         "error_type": item.error_type,
         "error": item.error,
@@ -32,6 +38,22 @@ def result_from_item(item: BatchRunItem) -> dict:
         "requested_topic": item.requested_topic,
         "slot_key": item.slot_key,
     }
+
+
+def summarize_display_status(*, batch_status: str, queued: int, running: int, completed: int, failed: int, total: int) -> str:
+    if batch_status == "cancelled" and (running > 0 or queued > 0):
+        return "stopping"
+    if batch_status == "paused":
+        return "paused"
+    if batch_status == "cancelled":
+        return "cancelled"
+    if running > 0:
+        return "running"
+    if queued > 0:
+        return "running" if (completed > 0 or failed > 0) else "queued"
+    if failed == total and total > 0:
+        return "failed"
+    return "completed"
 
 
 def update_batch_counts(items: list[BatchRunItem], batch_run: BatchRun):
@@ -110,7 +132,16 @@ def build_batch_summary(batch_run: BatchRun, items: list[BatchRunItem]) -> dict:
 
     summary = {
         "batch_run_id": batch_run.run_id,
-        "status": batch_run.status,
+        "request_group_id": request_payload.get("request_group_id"),
+        "status": summarize_display_status(
+            batch_status=batch_run.status,
+            queued=batch_run.queued_runs,
+            running=batch_run.running_runs,
+            completed=batch_run.completed_runs,
+            failed=batch_run.failed_runs,
+            total=batch_run.total_runs,
+        ),
+        "raw_status": batch_run.status,
         "requested_runs": batch_run.total_runs,
         "generated": batch_run.completed_runs,
         "saved": batch_run.completed_runs,
@@ -126,6 +157,7 @@ def build_batch_summary(batch_run: BatchRun, items: list[BatchRunItem]) -> dict:
         "topic": request_payload.get("topic"),
         "planned_topics": request_payload.get("planned_topics", []),
         "requested_topic": request_payload.get("topic"),
+        "source_material_mode": request_payload.get("source_material_mode", "content_and_style"),
         "agent_usage": dict(agent_usage),
         "topic_usage": dict(topic_usage),
         "slot_usage": dict(slot_usage),

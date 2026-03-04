@@ -10,6 +10,8 @@ from .batch_store import (
     batch_run_control_state,
     claim_existing_dataset_if_present,
     create_batch_run,
+    delete_batch_run as _delete_batch_run,
+    delete_terminal_batch_runs as _delete_terminal_batch_runs,
     finalize_item_failure,
     finalize_item_success,
     get_batch_run_status,
@@ -123,6 +125,8 @@ def _build_batch_request_payload(
     agent: AgentType | None,
     model: str | None,
     source_material: str | None,
+    source_material_mode: str,
+    conversation_length_mode: str,
     amount: int,
     ex_amt: int,
     random_agent: bool,
@@ -132,12 +136,16 @@ def _build_batch_request_payload(
     seed: int | None,
     planned_topics: list[str],
     slot_key: str | None,
+    request_group_id: str | None,
 ) -> dict:
     return {
+        "request_group_id": request_group_id,
         "topic": topic,
         "agent": agent.value if agent else None,
         "model": model,
         "source_material": source_material,
+        "source_material_mode": source_material_mode,
+        "conversation_length_mode": conversation_length_mode,
         "amount": amount,
         "ex_amt": ex_amt,
         "random_agent": random_agent,
@@ -157,12 +165,15 @@ async def build_generation_plan(
     agent: AgentType | None = None,
     model: str | None = None,
     source_material: str | None = None,
+    source_material_mode: str = "content_and_style",
+    conversation_length_mode: str = "varied",
     ex_amt: int = 20,
     random_agent: bool = False,
     max_retries: int = 2,
     retry_backoff_seconds: float = 1.0,
     seed: int | None = None,
     slot_key: str | None = None,
+    allow_topic_variations: bool = True,
 ) -> dict:
     _validate_generation_request(
         amount=amount,
@@ -178,20 +189,23 @@ async def build_generation_plan(
     except Exception as e:
         saveToLog(f"[start_generation] Failed to load existing dataset names: {e}", "WARNING")
         existing_names = []
-    topic_count = _suggest_topic_count(amount)
-    try:
-        planned_topics = await run_topic_variation_agent(
-            topic=topic,
-            topic_count=topic_count,
-            existing_dataset_names=existing_names,
-            run_id=planner_run_id,
-            model=model,
-        )
-    except Exception as e:
-        saveToLog(
-            f"[start_generation] Topic planning failed, falling back to base topic: {e}",
-            "WARNING",
-        )
+    if allow_topic_variations:
+        topic_count = _suggest_topic_count(amount)
+        try:
+            planned_topics = await run_topic_variation_agent(
+                topic=topic,
+                topic_count=topic_count,
+                existing_dataset_names=existing_names,
+                run_id=planner_run_id,
+                model=model,
+            )
+        except Exception as e:
+            saveToLog(
+                f"[start_generation] Topic planning failed, falling back to base topic: {e}",
+                "WARNING",
+            )
+            planned_topics = [topic]
+    else:
         planned_topics = [topic]
 
     if not planned_topics:
@@ -271,10 +285,20 @@ async def _execute_batch_item(item_id: int) -> dict | None:
                 agent_type=resolved_agent,
                 model=item_data["model"],
                 source_material=item_data["source_material"],
+                source_material_mode=item_data["source_material_mode"],
+                conversation_length_mode=item_data["conversation_length_mode"],
                 run_id=item_data["run_id"],
                 dataset_key=item_data["dataset_key"],
                 seed=item_data["seed"],
             )
+            control_state = batch_run_control_state(item_id)
+            if control_state and control_state[1] == "cancelled":
+                return finalize_item_failure(
+                    item_id,
+                    error_type="cancelled",
+                    error="Stop requested before dataset save completed",
+                    terminal=True,
+                )
             ingest_result = await save_responses(
                 agent_type=resolved_agent,
                 examples=dataset,
@@ -446,6 +470,8 @@ async def start_generation(
     agent: AgentType | None = None,
     model: str | None = None,
     source_material: str | None = None,
+    source_material_mode: str = "content_and_style",
+    conversation_length_mode: str = "varied",
     ex_amt: int = 20,
     random_agent: bool = False,
     max_concurrency: int = 3,
@@ -454,6 +480,9 @@ async def start_generation(
     seed: int | None = None,
     batch_run_id: str | None = None,
     slot_key: str | None = None,
+    allow_topic_variations: bool = True,
+    request_group_id: str | None = None,
+    wait_for_completion: bool = True,
 ):
     _validate_generation_request(
         amount=amount,
@@ -472,18 +501,23 @@ async def start_generation(
         agent=agent,
         model=model,
         source_material=source_material,
+        source_material_mode=source_material_mode,
+        conversation_length_mode=conversation_length_mode,
         ex_amt=ex_amt,
         random_agent=random_agent,
         max_retries=max_retries,
         retry_backoff_seconds=retry_backoff_seconds,
         seed=seed,
         slot_key=slot_key,
+        allow_topic_variations=allow_topic_variations,
     )
     request_payload = _build_batch_request_payload(
         topic=topic,
         agent=agent,
         model=model,
         source_material=source_material,
+        source_material_mode=source_material_mode,
+        conversation_length_mode=conversation_length_mode,
         amount=amount,
         ex_amt=ex_amt,
         random_agent=random_agent,
@@ -493,13 +527,34 @@ async def start_generation(
         seed=seed,
         planned_topics=plan["planned_topics"],
         slot_key=slot_key,
+        request_group_id=request_group_id,
     )
     batch_run_id = create_batch_run(
         request_payload=request_payload,
         run_plan=plan["run_plan"],
         run_id=new_run_id(),
     )
+    if not wait_for_completion:
+        asyncio.create_task(resume_batch_run(batch_run_id, max_concurrency=max_concurrency))
+        summary = get_batch_run_status(batch_run_id)
+        if summary is None:
+            raise ValueError("Batch run not found after creation")
+        return summary
     return await resume_batch_run(batch_run_id, max_concurrency=max_concurrency)
+
+
+def delete_batch_run(batch_run_id: str) -> dict | None:
+    summary = _delete_batch_run(batch_run_id)
+    if summary is not None:
+        _ACTIVE_BATCH_RUNS.discard(batch_run_id)
+    return summary
+
+
+def delete_terminal_batch_runs() -> dict:
+    result = _delete_terminal_batch_runs()
+    for run_id in result.get("deleted_run_ids", []):
+        _ACTIVE_BATCH_RUNS.discard(run_id)
+    return result
 
 
 

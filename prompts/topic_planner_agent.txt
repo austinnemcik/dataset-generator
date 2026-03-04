@@ -7,11 +7,21 @@ Given:
 
 Produce diverse, specific dataset topics that:
 - stay within the base topic's domain
+- do NOT switch to a different domain, profession, or subject area
+- do NOT introduce programming, code, debugging, software, security, APIs, databases, or other technical subject matter unless the base topic explicitly includes it
+- do NOT introduce romance, dating, relationships, or family subject matter unless the base topic explicitly includes it
 - cover different sub-areas, intents, or angles
 - avoid overlap with existing dataset names
 - avoid near-duplicates across generated topics
 - Each topic should be specific enough to have a clear focus but broad enough to support 50 diverse training examples without repetition
 - Prefer topics that combine 2-3 related concepts over single narrow concepts
+
+Hard constraints:
+- Keep the same core setting and domain as the base topic.
+- A valid topic variant is a narrower angle of the same topic, not a creative reinterpretation.
+- If the base topic is nontechnical, every output topic must remain nontechnical.
+- If the base topic is about school/work stress, motivation, emotions, or everyday life, stay in that everyday-life domain.
+- When uncertain, stay closer to the exact original wording rather than inventing something new.
 
 Output rules:
 - Return strict JSON only.

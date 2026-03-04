@@ -7,6 +7,17 @@ import app.core.logger as logger
 from .settings import calculate_price, client, get_client_settings
 
 
+def _default_temperature_for_stage(stage: str) -> float:
+    normalized = (stage or "").strip().lower()
+    if normalized in {"generation", "regeneration_batch"}:
+        return 0.75
+    if normalized in {"naming", "topic_planning"}:
+        return 0.3
+    if normalized in {"grading_batch", "grading_regeneration_batch"}:
+        return 0.2
+    return 0.3
+
+
 def _summarize_for_log(text: str, max_chars: int = 600) -> str:
     cleaned = " ".join((text or "").split())
     if len(cleaned) <= max_chars:
@@ -28,14 +39,19 @@ async def run_agent_async(
     dataset_key: str | None = None,
     topic: str | None = None,
     stage: str = "unknown",
+    temperature: float | None = None,
 ):
     model = model or get_client_settings().default_model
+    resolved_temperature = (
+        float(temperature) if temperature is not None else _default_temperature_for_stage(stage)
+    )
     if label:
         with timer(label):
             try:
                 response = await asyncio.to_thread(
                     client.chat.completions.create,
                     model=model,
+                    temperature=resolved_temperature,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
@@ -49,6 +65,7 @@ async def run_agent_async(
             response = await asyncio.to_thread(
                 client.chat.completions.create,
                 model=model,
+                temperature=resolved_temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -65,6 +82,7 @@ async def run_agent_async(
             "OpenRouter API call succeeded. "
             f"stage={stage} "
             f"model={model} "
+            f"temperature={resolved_temperature} "
             f"tokens={response.usage.total_tokens} "
             f"cost_usd={{total:{_format_usd(total_cost)},input:{_format_usd(input_cost)},output:{_format_usd(output_cost)}}} "
             f"prompt_chars={len((system_prompt or '')) + len((user_prompt or ''))} "

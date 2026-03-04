@@ -1,6 +1,45 @@
+import { useMemo, useState } from "react";
+import { ToggleField } from "./ToggleField";
+
+type BatchAction = "pause" | "resume" | "stop" | "restart-failed" | "delete";
+
+const AGENT_OPTIONS = [
+  { id: "conversation", label: "Conversation" },
+  { id: "instruction_following", label: "Instruction" },
+  { id: "style", label: "Style" },
+  { id: "qa", label: "Q&A" },
+  { id: "adversarial", label: "Adversarial" },
+  { id: "domain_specialist", label: "Domain" },
+];
+
+const CONVERSATION_LENGTH_OPTIONS = [
+  {
+    id: "varied",
+    label: "Varied",
+    description: "Mix short, medium, and longer chats so personality holds up across different conversation lengths.",
+  },
+  {
+    id: "short",
+    label: "Short",
+    description: "Bias toward quicker 2-4 turn exchanges when you want broader scenario coverage.",
+  },
+  {
+    id: "balanced",
+    label: "Balanced",
+    description: "Lean toward mid-length back and forth with room for a couple follow-up turns.",
+  },
+  {
+    id: "long",
+    label: "Long",
+    description: "Bias toward longer threads so the assistant practices staying in character over time.",
+  },
+] as const;
+
 type BatchRunRow = {
   run_id: string;
-  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "paused";
+  request_group_id?: string | null;
+  member_run_ids?: string[];
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "paused" | "stopping";
   requested_runs: number;
   saved: number;
   failed: number;
@@ -13,11 +52,20 @@ type BatchRunRow = {
   completed_at: string | null;
 };
 
+type BatchRunSlotSummary = {
+  slot_key: string;
+  requested_topic: string;
+  selected_agent: string;
+  requested_runs: number;
+  saved: number;
+  failed: number;
+};
+
 type BatchRunResult = {
   index: number;
   run_id: string;
   dataset_id: number | null;
-  status: "saved" | "failed";
+  status: "saved" | "failed" | "queued" | "running";
   topic: string | null;
   agent: string | null;
   error: string | null;
@@ -25,6 +73,7 @@ type BatchRunResult = {
 
 type BatchRunDetail = {
   batch_run_id: string;
+  request_group_id?: string | null;
   status: BatchRunRow["status"];
   requested_runs: number;
   saved: number;
@@ -38,6 +87,7 @@ type BatchRunDetail = {
   updated_at: string | null;
   started_at: string | null;
   completed_at: string | null;
+  per_slot_summary?: BatchRunSlotSummary[];
   results: BatchRunResult[];
 };
 
@@ -57,14 +107,24 @@ type BatchStreamEvent = {
 type GenerationFormState = {
   topics: string;
   agentTypes: string;
+  allowTopicVariations: boolean;
+  conversationLengthMode: "varied" | "short" | "balanced" | "long";
   amount: string;
   exAmt: string;
+  sourceDatasetIds: string;
+  personalityInstructions: string;
+  sourceMaterialMode: "style_only" | "content_and_style";
   model: string;
   maxConcurrency: string;
 };
 
 type ModelOption = {
   id: string;
+  name: string;
+};
+
+type SourceDatasetOption = {
+  id: number;
   name: string;
 };
 
@@ -81,16 +141,21 @@ type GenerationViewProps = {
   selectedRunDetail: BatchRunDetail | null;
   detailLoading: boolean;
   streamEvents: BatchStreamEvent[];
-  streamStatus: "idle" | "connecting" | "live" | "offline";
+  streamStatus: "idle" | "connecting" | "live" | "offline" | "completed";
   detailError: string;
   actionPending: string;
   modelOptions: ModelOption[];
+  availableDatasets: SourceDatasetOption[];
+  selectedSourceDatasetIds: number[];
   modelLoading: boolean;
   onOpenModelPicker: () => void;
+  onToggleSourceDataset: (datasetId: number) => void;
+  onClearSourceDatasets: () => void;
   onOpenDataset: (datasetId: number) => void;
   onSelectRun: (runId: string) => void;
   onRefreshRuns: () => void;
-  onBatchAction: (action: "pause" | "resume" | "stop" | "restart-failed") => void;
+  onClearCompletedRuns: () => void;
+  onBatchAction: (action: BatchAction) => void;
 };
 
 function compactDate(value: string | null): string {
@@ -121,6 +186,9 @@ function percentage(saved: number, failed: number, requested: number) {
 function streamLabel(streamStatus: GenerationViewProps["streamStatus"]) {
   if (streamStatus === "live") {
     return "Live stream";
+  }
+  if (streamStatus === "completed") {
+    return "Complete";
   }
   if (streamStatus === "connecting") {
     return "Connecting";
@@ -178,17 +246,52 @@ export function GenerationView({
   detailError,
   actionPending,
   modelOptions,
+  availableDatasets,
+  selectedSourceDatasetIds,
   modelLoading,
   onOpenModelPicker,
+  onToggleSourceDataset,
+  onClearSourceDatasets,
   onOpenDataset,
   onSelectRun,
   onRefreshRuns,
+  onClearCompletedRuns,
   onBatchAction,
 }: GenerationViewProps) {
+  const [isSupportDatasetModalOpen, setIsSupportDatasetModalOpen] = useState(false);
+  const [supportDatasetQuery, setSupportDatasetQuery] = useState("");
   const progress = selectedRunDetail
     ? percentage(selectedRunDetail.saved, selectedRunDetail.failed, selectedRunDetail.requested_runs)
     : 0;
   const failureSummary = selectedRunDetail ? summarizeFailures(selectedRunDetail.results) : [];
+  const selectedAgentIds = useMemo(
+    () =>
+      form.agentTypes
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    [form.agentTypes],
+  );
+  const filteredSupportDatasets = useMemo(() => {
+    const query = supportDatasetQuery.trim().toLowerCase();
+    if (!query) {
+      return availableDatasets;
+    }
+    return availableDatasets.filter(
+      (dataset) => dataset.name.toLowerCase().includes(query) || String(dataset.id).includes(query),
+    );
+  }, [availableDatasets, supportDatasetQuery]);
+
+  function toggleAgentType(agentId: string) {
+    onFormChange((current) => {
+      const parsed = current.agentTypes
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const next = parsed.includes(agentId) ? parsed.filter((value) => value !== agentId) : [...parsed, agentId];
+      return { ...current, agentTypes: next.join(", ") };
+    });
+  }
 
   return (
     <section className="generation-layout" aria-label="Generation workspace">
@@ -212,16 +315,93 @@ export function GenerationView({
               rows={4}
               value={form.topics}
             />
+            <span className="field-hint">
+              Each non-empty line is a separate topic. When you enter multiple topics, they are used as-is and the total amount is split across those topics and the selected agent types.
+            </span>
           </label>
 
-          <label className="field">
+          <div className="field">
             <span className="field-label">Agent Types</span>
-            <input
-              onChange={(event) => onFormChange((current) => ({ ...current, agentTypes: event.target.value }))}
-              type="text"
-              value={form.agentTypes}
-            />
-          </label>
+            <div className="agent-chip-grid">
+              {AGENT_OPTIONS.map((agent) => {
+                const isSelected = selectedAgentIds.includes(agent.id);
+                return (
+                  <button
+                    key={agent.id}
+                    className={isSelected ? "agent-chip agent-chip-active" : "agent-chip"}
+                    onClick={() => toggleAgentType(agent.id)}
+                    type="button"
+                  >
+                    {agent.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="field-hint">
+              Pick one or more agent styles. The total amount is split across the selected agents.
+            </span>
+          </div>
+
+          <div className="field field-toggle-card">
+            <div className="field-toggle-head">
+              <div>
+                <span className="field-label">Generate Topic Variants</span>
+                <p className="generation-section-note">
+                  Off by default. Turn this on only if you want the system to expand one base topic into related subtopics.
+                </p>
+              </div>
+              <ToggleField
+                checked={form.allowTopicVariations}
+                compact
+                label="Allow variants"
+                onChange={(checked) =>
+                  onFormChange((current) => ({
+                    ...current,
+                    allowTopicVariations: checked,
+                  }))
+                }
+              />
+            </div>
+            <span className="field-hint">
+              When this is off, each topic line is used literally and the planner will not invent alternate topic angles.
+            </span>
+          </div>
+
+          <div className="field field-toggle-card">
+            <div className="field-toggle-head">
+              <div>
+                <span className="field-label">Conversation Length</span>
+                <p className="generation-section-note">
+                  Applies to the conversation agent. This controls whether generated chats stay short or include more follow-up turns.
+                </p>
+              </div>
+            </div>
+            <div className="agent-chip-grid">
+              {CONVERSATION_LENGTH_OPTIONS.map((option) => {
+                const isSelected = form.conversationLengthMode === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    className={isSelected ? "agent-chip agent-chip-active" : "agent-chip"}
+                    onClick={() =>
+                      onFormChange((current) => ({
+                        ...current,
+                        conversationLengthMode: option.id,
+                      }))
+                    }
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="field-hint">
+              {
+                CONVERSATION_LENGTH_OPTIONS.find((option) => option.id === form.conversationLengthMode)?.description
+              }
+            </span>
+          </div>
 
           <label className="field">
             <span className="field-label">Amount</span>
@@ -232,8 +412,8 @@ export function GenerationView({
             />
           </label>
 
-          <label className="field">
-            <span className="field-label">Examples per Dataset</span>
+          <label className="field field-tight">
+            <span className="field-label field-label-nowrap">Examples per Dataset</span>
             <input
               onChange={(event) => onFormChange((current) => ({ ...current, exAmt: event.target.value }))}
               type="number"
@@ -242,6 +422,112 @@ export function GenerationView({
           </label>
 
           <label className="field">
+            <span className="field-label">Max Concurrency</span>
+            <input
+              onChange={(event) => onFormChange((current) => ({ ...current, maxConcurrency: event.target.value }))}
+              type="number"
+              value={form.maxConcurrency}
+            />
+          </label>
+
+          <div className="field field-span-2">
+            <span className="field-label">Support Datasets</span>
+            <div className="support-launcher-card">
+              <div>
+                <p className="generation-section-note">
+                  {selectedSourceDatasetIds.length > 0
+                    ? `${selectedSourceDatasetIds.length} support datasets attached`
+                    : "Attach example datasets as grounding context without crowding the form"}
+                </p>
+                {selectedSourceDatasetIds.length > 0 ? (
+                  <div className="support-selection-strip">
+                    {selectedSourceDatasetIds.slice(0, 6).map((datasetId) => (
+                      <span key={datasetId} className="support-selection-pill">
+                        #{datasetId}
+                      </span>
+                    ))}
+                    {selectedSourceDatasetIds.length > 6 ? (
+                      <span className="support-selection-pill">+{selectedSourceDatasetIds.length - 6} more</span>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <div className="dataset-picker-actions">
+                <button
+                  className="ghost-button ghost-button-compact"
+                  onClick={() => setIsSupportDatasetModalOpen(true)}
+                  type="button"
+                >
+                  Choose Datasets
+                </button>
+                <button
+                  className="ghost-button ghost-button-compact"
+                  disabled={selectedSourceDatasetIds.length === 0}
+                  onClick={onClearSourceDatasets}
+                  type="button"
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
+            <span className="field-hint">
+              Attached dataset examples are expanded into source material before generation starts.
+            </span>
+          </div>
+
+          <div className="field field-span-2">
+            <span className="field-label">Source Material Mode</span>
+            <div className="agent-chip-grid">
+              <button
+                className={
+                  form.sourceMaterialMode === "style_only" ? "agent-chip agent-chip-active" : "agent-chip"
+                }
+                onClick={() =>
+                  onFormChange((current) => ({
+                    ...current,
+                    sourceMaterialMode: "style_only",
+                  }))
+                }
+                type="button"
+              >
+                Style Only
+              </button>
+              <button
+                className={
+                  form.sourceMaterialMode === "content_and_style" ? "agent-chip agent-chip-active" : "agent-chip"
+                }
+                onClick={() =>
+                  onFormChange((current) => ({
+                    ...current,
+                    sourceMaterialMode: "content_and_style",
+                  }))
+                }
+                type="button"
+              >
+                Content + Style
+              </button>
+            </div>
+            <span className="field-hint">
+              Style Only keeps the topic in charge and uses attached material just for tone, voice, and personality. Content + Style also lets source material influence details and subject matter when it fits.
+            </span>
+          </div>
+
+          <label className="field field-span-2">
+            <span className="field-label">Personality Instructions</span>
+            <textarea
+              onChange={(event) =>
+                onFormChange((current) => ({ ...current, personalityInstructions: event.target.value }))
+              }
+              placeholder="Optional voice, tone, behavior, and character rules to ground the batch"
+              rows={4}
+              value={form.personalityInstructions}
+            />
+            <span className="field-hint">
+              Use this for explicit style rules like tone, pacing, favorite phrases, boundaries, and character traits.
+            </span>
+          </label>
+
+          <label className="field field-span-2">
             <span className="field-label">Model</span>
             <input
               onChange={(event) => onFormChange((current) => ({ ...current, model: event.target.value }))}
@@ -266,15 +552,6 @@ export function GenerationView({
               <option key={model.id} label={model.name} value={model.id} />
             ))}
           </datalist>
-
-          <label className="field">
-            <span className="field-label">Max Concurrency</span>
-            <input
-              onChange={(event) => onFormChange((current) => ({ ...current, maxConcurrency: event.target.value }))}
-              type="number"
-              value={form.maxConcurrency}
-            />
-          </label>
         </div>
 
         <div className="generation-actions">
@@ -299,12 +576,17 @@ export function GenerationView({
               <p className="card-eyebrow">Recent runs</p>
               <h2 className="placeholder-title">Run monitor</h2>
             </div>
-            <button className="ghost-button ghost-button-compact" onClick={onRefreshRuns} type="button">
-              Refresh
-            </button>
+            <div className="dataset-picker-actions">
+              <button className="ghost-button ghost-button-compact" onClick={onRefreshRuns} type="button">
+                Refresh
+              </button>
+              <button className="ghost-button ghost-button-compact" onClick={onClearCompletedRuns} type="button">
+                Clear Completed
+              </button>
+            </div>
           </div>
 
-          <div className="run-list">
+          <div className="run-list run-list-compact">
             {runs.map((run) => {
               const completion = percentage(run.saved, run.failed, run.requested_runs);
               return (
@@ -316,18 +598,23 @@ export function GenerationView({
                 >
                   <div className="run-card-header">
                     <div>
-                      <p className="run-id">{run.run_id}</p>
-                      <h3 className="run-topic">{run.topic || "Untitled batch run"}</h3>
+                      <p className="run-id">{run.run_id.slice(0, 8)}</p>
+                      <h3 className="run-topic run-topic-compact">{run.topic || "Untitled batch run"}</h3>
                     </div>
                     <span className={`status-tag status-tag-${run.status}`}>{run.status}</span>
                   </div>
 
-                  <p className="run-meta">
-                    {run.requested_agent || "mixed agents"} - {compactDate(run.created_at)}
-                  </p>
-                  <p className="card-body">
-                    {run.saved} saved - {run.failed} failed - {run.running} running - {run.queued} queued
-                  </p>
+                  <div className="run-card-summary">
+                    <p className="run-meta">{run.requested_agent || "mixed agents"}</p>
+                    <p className="run-meta">{compactDate(run.created_at)}</p>
+                  </div>
+                  <div className="run-count-strip">
+                    <span className="run-count-pill">{run.requested_runs} requested</span>
+                    <span className="run-count-pill">{run.saved} saved</span>
+                    <span className="run-count-pill">{run.failed} failed</span>
+                    {run.running > 0 ? <span className="run-count-pill">{run.running} running</span> : null}
+                    {run.queued > 0 ? <span className="run-count-pill">{run.queued} queued</span> : null}
+                  </div>
 
                   <div className="run-progress-track" aria-hidden="true">
                     <span className="run-progress-value" style={{ width: `${completion}%` }} />
@@ -428,7 +715,10 @@ export function GenerationView({
               <div className="generation-control-row">
                 <button
                   className="ghost-button ghost-button-compact"
-                  disabled={actionPending === "resume" || selectedRunDetail.status === "completed" || selectedRunDetail.status === "cancelled"}
+                  disabled={
+                    actionPending === "resume" ||
+                    selectedRunDetail.status !== "paused"
+                  }
                   onClick={() => onBatchAction("resume")}
                   type="button"
                 >
@@ -436,7 +726,13 @@ export function GenerationView({
                 </button>
                 <button
                   className="ghost-button ghost-button-compact"
-                  disabled={actionPending === "pause" || selectedRunDetail.status === "paused" || selectedRunDetail.status === "completed" || selectedRunDetail.status === "cancelled"}
+                  disabled={
+                    actionPending === "pause" ||
+                    selectedRunDetail.status === "paused" ||
+                    selectedRunDetail.status === "completed" ||
+                    selectedRunDetail.status === "cancelled" ||
+                    selectedRunDetail.status === "stopping"
+                  }
                   onClick={() => onBatchAction("pause")}
                   type="button"
                 >
@@ -444,7 +740,12 @@ export function GenerationView({
                 </button>
                 <button
                   className="danger-button danger-button-slim"
-                  disabled={actionPending === "stop" || selectedRunDetail.status === "cancelled" || selectedRunDetail.status === "completed"}
+                  disabled={
+                    actionPending === "stop" ||
+                    selectedRunDetail.status === "cancelled" ||
+                    selectedRunDetail.status === "completed" ||
+                    selectedRunDetail.status === "stopping"
+                  }
                   onClick={() => onBatchAction("stop")}
                   type="button"
                 >
@@ -458,7 +759,41 @@ export function GenerationView({
                 >
                   {actionPending === "restart-failed" ? "Requeueing..." : "Restart Failed"}
                 </button>
+                <button
+                  className="danger-button danger-button-slim"
+                  disabled={
+                    actionPending === "delete" ||
+                    !["completed", "failed", "cancelled", "stopping"].includes(selectedRunDetail.status)
+                  }
+                  onClick={() => onBatchAction("delete")}
+                  type="button"
+                >
+                  {actionPending === "delete"
+                    ? "Removing..."
+                    : selectedRunDetail.status === "stopping"
+                      ? "Force Remove"
+                      : "Remove Run"}
+                </button>
               </div>
+
+              {selectedRunDetail.per_slot_summary && selectedRunDetail.per_slot_summary.length > 0 ? (
+                <div className="generation-slot-block">
+                  <div className="generation-section-head">
+                    <p className="card-eyebrow">Grouped slots</p>
+                    <p className="generation-section-note">How this batch was split</p>
+                  </div>
+                  <div className="generation-slot-grid">
+                    {selectedRunDetail.per_slot_summary.slice(0, 8).map((slot) => (
+                      <article key={slot.slot_key} className="generation-slot-card">
+                        <strong>{slot.requested_topic}</strong>
+                        <p className="generation-event-meta">
+                          {slot.selected_agent} - {slot.saved}/{slot.requested_runs} saved
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <dl className="generation-meta-grid">
                 <div>
@@ -570,6 +905,52 @@ export function GenerationView({
           )}
         </section>
       </div>
+
+      {isSupportDatasetModalOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <div className="detail-modal model-picker-modal" aria-modal="true" role="dialog">
+            <div className="detail-modal-header">
+              <div>
+                <p className="card-eyebrow">Support datasets</p>
+                <h3 className="placeholder-title">Choose grounding datasets</h3>
+              </div>
+              <button className="ghost-button ghost-button-compact" onClick={() => setIsSupportDatasetModalOpen(false)} type="button">
+                Close
+              </button>
+            </div>
+
+            <label className="field export-picker-search">
+              <span className="field-label">Search datasets</span>
+              <input
+                onChange={(event) => setSupportDatasetQuery(event.target.value)}
+                placeholder="Search by name or dataset id"
+                type="text"
+                value={supportDatasetQuery}
+              />
+            </label>
+
+            <div className="model-picker-grid">
+              {filteredSupportDatasets.map((dataset) => {
+                const isSelected = selectedSourceDatasetIds.includes(dataset.id);
+                return (
+                  <button
+                    key={dataset.id}
+                    className={isSelected ? "dataset-picker-chip dataset-picker-chip-active" : "dataset-picker-chip"}
+                    onClick={() => onToggleSourceDataset(dataset.id)}
+                    type="button"
+                  >
+                    <span className="dataset-picker-id">#{dataset.id}</span>
+                    <span className="dataset-picker-name">{dataset.name}</span>
+                  </button>
+                );
+              })}
+              {filteredSupportDatasets.length === 0 ? (
+                <div className="empty-state">No datasets matched this search.</div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

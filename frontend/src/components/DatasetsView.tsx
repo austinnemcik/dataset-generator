@@ -1,3 +1,6 @@
+import { useMemo, useState } from "react";
+import { ToggleField } from "./ToggleField";
+
 type DatasetRow = {
   id: number;
   name: string;
@@ -33,16 +36,41 @@ type DatasetsViewProps = {
   onSelectDataset: (datasetId: number) => void;
   onRefresh: () => void;
   onExampleShift: (step: number) => void;
+  onRemoveExample: (exampleId: number) => void;
+  onUpdateExample: (exampleId: number, instruction: string, response: string) => Promise<void>;
   onView: () => void;
   onExport: () => void;
   onDelete: () => void;
   onCopyId: () => void;
+  onOpenTargetedMerge: () => void;
+  onCloseTargetedMerge: () => void;
+  onSubmitTargetedMerge: () => void;
+  onToggleMergeDataset: (datasetId: number) => void;
+  onClearMergeDatasets: () => void;
+  onTargetedMergeDeleteOriginalsChange: (checked: boolean) => void;
+  onTargetedMergeThresholdChange: (value: string) => void;
+  onOpenGlobalMergeConfirm: () => void;
+  onCloseGlobalMergeConfirm: () => void;
+  onConfirmGlobalMerge: () => void;
+  onGlobalMergeDeleteOriginalsChange: (checked: boolean) => void;
+  onGlobalMergeThresholdChange: (value: string) => void;
   onOpenDeleteConfirm: () => void;
   deletePending: boolean;
+  exampleDeletePendingId: number | null;
+  exampleSavePendingId: number | null;
+  mergePending: boolean;
+  globalMergePending: boolean;
   isViewOpen: boolean;
   onCloseView: () => void;
   isDeleteConfirmOpen: boolean;
   onCloseDeleteConfirm: () => void;
+  isTargetedMergeOpen: boolean;
+  isGlobalMergeConfirmOpen: boolean;
+  targetedMergeDatasetIds: number[];
+  targetedMergeDeleteOriginals: boolean;
+  targetedMergeThreshold: string;
+  globalMergeDeleteOriginals: boolean;
+  globalMergeThreshold: string;
 };
 
 export function DatasetsView({
@@ -56,23 +84,111 @@ export function DatasetsView({
   onSelectDataset,
   onRefresh,
   onExampleShift,
+  onRemoveExample,
+  onUpdateExample,
   onView,
   onExport,
   onDelete,
   onCopyId,
+  onOpenTargetedMerge,
+  onCloseTargetedMerge,
+  onSubmitTargetedMerge,
+  onToggleMergeDataset,
+  onClearMergeDatasets,
+  onTargetedMergeDeleteOriginalsChange,
+  onTargetedMergeThresholdChange,
+  onOpenGlobalMergeConfirm,
+  onCloseGlobalMergeConfirm,
+  onConfirmGlobalMerge,
+  onGlobalMergeDeleteOriginalsChange,
+  onGlobalMergeThresholdChange,
   onOpenDeleteConfirm,
   deletePending,
+  exampleDeletePendingId,
+  exampleSavePendingId,
+  mergePending,
+  globalMergePending,
   isViewOpen,
   onCloseView,
   isDeleteConfirmOpen,
   onCloseDeleteConfirm,
+  isTargetedMergeOpen,
+  isGlobalMergeConfirmOpen,
+  targetedMergeDatasetIds,
+  targetedMergeDeleteOriginals,
+  targetedMergeThreshold,
+  globalMergeDeleteOriginals,
+  globalMergeThreshold,
 }: DatasetsViewProps) {
+  const [mergeQuery, setMergeQuery] = useState("");
+  const [pendingExampleRemoval, setPendingExampleRemoval] = useState<{
+    id: number;
+    label: string;
+  } | null>(null);
+  const [editingExample, setEditingExample] = useState<{
+    id: number;
+    label: string;
+    instruction: string;
+    response: string;
+  } | null>(null);
+  const [editDraft, setEditDraft] = useState({ instruction: "", response: "" });
+
+  const filteredMergeDatasets = useMemo(() => {
+    const query = mergeQuery.trim().toLowerCase();
+    if (!query) {
+      return datasets;
+    }
+    return datasets.filter(
+      (dataset) =>
+        dataset.name.toLowerCase().includes(query) ||
+        String(dataset.id).includes(query) ||
+        (dataset.category ?? "").toLowerCase().includes(query),
+    );
+  }, [datasets, mergeQuery]);
+
   return (
     <>
       <div className="datasets-page-head">
         <p className="card-eyebrow">Datasets</p>
         <h2 className="placeholder-title">Dataset library</h2>
       </div>
+
+      <section className="dataset-library-merge-card" aria-label="Dataset library merge controls">
+        <div className="field-toggle-head">
+          <div>
+            <span className="field-label">Merge Related Datasets</span>
+            <p className="dataset-merge-copy">
+              Scan the whole dataset library, merge related datasets into larger datasets, and optionally delete the originals after each merge.
+            </p>
+          </div>
+          <button className="topbar-button" disabled={globalMergePending} onClick={onOpenGlobalMergeConfirm} type="button">
+            {globalMergePending ? "Merging..." : "Merge All Related"}
+          </button>
+        </div>
+
+        <div className="targeted-merge-controls">
+          <label className="field field-inline field-compact dataset-threshold-field">
+            <span className="field-label">Similarity Threshold</span>
+            <input
+              className="field-input field-input-number"
+              max="1"
+              min="0.1"
+              onChange={(event) => onGlobalMergeThresholdChange(event.target.value)}
+              step="0.05"
+              type="number"
+              value={globalMergeThreshold}
+            />
+          </label>
+
+          <ToggleField
+            checked={globalMergeDeleteOriginals}
+            compact
+            label="Delete originals after merge"
+            onChange={onGlobalMergeDeleteOriginalsChange}
+            tone="danger"
+          />
+        </div>
+      </section>
 
       <section className="datasets-layout" aria-label="Dataset library">
         <div className="datasets-panel">
@@ -190,6 +306,9 @@ export function DatasetsView({
             <button className="ghost-button ghost-button-slim" disabled={!selectedDataset} onClick={onExport} type="button">
               Export
             </button>
+            <button className="ghost-button ghost-button-slim" disabled={!selectedDataset} onClick={onOpenTargetedMerge} type="button">
+              Targeted Merge
+            </button>
             <button
               className="danger-button danger-button-slim"
               disabled={!selectedDataset || deletePending}
@@ -252,7 +371,45 @@ export function DatasetsView({
               <div className="example-preview-list">
                 {selectedDataset.examplesPreview.map((example, index) => (
                   <article key={example.id ?? index} className="example-preview-card">
-                    <p className="card-eyebrow">Example {selectedDataset.examplesPreviewOffset + index + 1}</p>
+                    <div className="example-preview-head">
+                      <p className="card-eyebrow">Example {selectedDataset.examplesPreviewOffset + index + 1}</p>
+                      {typeof example.id === "number" ? (
+                        <div className="example-preview-head-actions">
+                          <button
+                            className="ghost-button ghost-button-slim"
+                            disabled={exampleSavePendingId === example.id}
+                            onClick={() => {
+                              setEditingExample({
+                                id: example.id as number,
+                                label: `Example ${selectedDataset.examplesPreviewOffset + index + 1}`,
+                                instruction: example.instruction,
+                                response: example.response,
+                              });
+                              setEditDraft({
+                                instruction: example.instruction,
+                                response: example.response,
+                              });
+                            }}
+                            type="button"
+                          >
+                            {exampleSavePendingId === example.id ? "Saving..." : "Edit"}
+                          </button>
+                          <button
+                            className="danger-button danger-button-slim"
+                            disabled={exampleDeletePendingId === example.id}
+                            onClick={() =>
+                              setPendingExampleRemoval({
+                                id: example.id as number,
+                                label: `Example ${selectedDataset.examplesPreviewOffset + index + 1}`,
+                              })
+                            }
+                            type="button"
+                          >
+                            {exampleDeletePendingId === example.id ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                     <p className="example-preview-label">Instruction</p>
                     <p className="card-body example-preview-body">{example.instruction}</p>
                     <p className="example-preview-label">Response</p>
@@ -306,6 +463,99 @@ export function DatasetsView({
         </div>
       ) : null}
 
+      {isTargetedMergeOpen ? (
+        <div className="modal-backdrop" onClick={onCloseTargetedMerge} role="presentation">
+          <section
+            aria-label="Targeted merge modal"
+            className="detail-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="detail-modal-header">
+              <div>
+                <p className="card-eyebrow">Targeted merge</p>
+                <h2 className="placeholder-title">Pick exact datasets to merge</h2>
+              </div>
+              <button className="ghost-button" onClick={onCloseTargetedMerge} type="button">
+                Close
+              </button>
+            </div>
+
+            <div className="dataset-picker-card">
+              <div className="dataset-picker-head">
+                <p className="card-body">
+                  Choose the exact datasets you want to combine. This uses the manual merge path instead of similarity discovery.
+                </p>
+              </div>
+              <label className="field export-picker-search">
+                <span className="field-label">Search datasets</span>
+                <input
+                  onChange={(event) => setMergeQuery(event.target.value)}
+                  placeholder="Search by name, id, or category"
+                  type="text"
+                  value={mergeQuery}
+                />
+              </label>
+              <div className="dataset-picker-grid">
+                {filteredMergeDatasets.map((dataset: DatasetRow) => {
+                  const isSelected = targetedMergeDatasetIds.includes(dataset.id);
+                  return (
+                    <button
+                      key={dataset.id}
+                      className={isSelected ? "dataset-picker-chip dataset-picker-chip-active" : "dataset-picker-chip"}
+                      onClick={() => onToggleMergeDataset(dataset.id)}
+                      type="button"
+                    >
+                      <span className="dataset-picker-id">#{dataset.id}</span>
+                      <span className="dataset-picker-name">{dataset.name}</span>
+                    </button>
+                  );
+                })}
+                {filteredMergeDatasets.length === 0 ? (
+                  <div className="empty-state">No datasets matched this search.</div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="targeted-merge-controls">
+              <label className="field field-inline field-compact dataset-threshold-field">
+                <span className="field-label">Similarity Threshold</span>
+                <input
+                  className="field-input field-input-number"
+                  max="1"
+                  min="0.1"
+                  onChange={(event) => onTargetedMergeThresholdChange(event.target.value)}
+                  step="0.05"
+                  type="number"
+                  value={targetedMergeThreshold}
+                />
+              </label>
+
+              <ToggleField
+                checked={targetedMergeDeleteOriginals}
+                compact
+                label="Delete originals after merge"
+                onChange={onTargetedMergeDeleteOriginalsChange}
+                tone="danger"
+              />
+            </div>
+
+            <div className="dataset-picker-actions">
+              <button className="ghost-button ghost-button-compact" onClick={onClearMergeDatasets} type="button">
+                Clear Selection
+              </button>
+              <button
+                className="topbar-button"
+                disabled={mergePending || targetedMergeDatasetIds.length < 2}
+                onClick={onSubmitTargetedMerge}
+                type="button"
+              >
+                {mergePending ? "Merging..." : `Merge ${targetedMergeDatasetIds.length} datasets`}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {isDeleteConfirmOpen && selectedDataset ? (
         <div className="modal-backdrop" onClick={onCloseDeleteConfirm} role="presentation">
           <section
@@ -330,6 +580,170 @@ export function DatasetsView({
               </button>
               <button className="danger-button" disabled={deletePending} onClick={onDelete} type="button">
                 {deletePending ? "Deleting..." : "Delete dataset"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isGlobalMergeConfirmOpen ? (
+        <div className="modal-backdrop" onClick={onCloseGlobalMergeConfirm} role="presentation">
+          <section
+            aria-label="Merge all related datasets confirmation"
+            className="detail-modal detail-modal-compact"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="detail-modal-header">
+              <div>
+                <p className="card-eyebrow">Confirm library merge</p>
+                <h2 className="placeholder-title">Merge all related datasets</h2>
+              </div>
+            </div>
+
+            <p className="card-body">
+              This will scan the full dataset library for related datasets and merge the matching groups into bigger datasets.
+              {globalMergeDeleteOriginals
+                ? " The original datasets will be deleted after each successful merge."
+                : " The original datasets will be kept."}
+            </p>
+
+            <div className="dataset-actions">
+              <button
+                className="ghost-button"
+                disabled={globalMergePending}
+                onClick={onCloseGlobalMergeConfirm}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="danger-button"
+                disabled={globalMergePending}
+                onClick={onConfirmGlobalMerge}
+                type="button"
+              >
+                {globalMergePending ? "Merging..." : "Merge library"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {pendingExampleRemoval ? (
+        <div className="modal-backdrop" onClick={() => setPendingExampleRemoval(null)} role="presentation">
+          <section
+            aria-label="Remove example confirmation"
+            className="detail-modal detail-modal-compact"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="detail-modal-header">
+              <div>
+                <p className="card-eyebrow">Remove example</p>
+                <h2 className="placeholder-title">{pendingExampleRemoval.label}</h2>
+              </div>
+            </div>
+
+            <p className="card-body">
+              This removes just this example from the dataset so you can curate out responses you do not want to keep.
+            </p>
+
+            <div className="dataset-actions">
+              <button
+                className="ghost-button"
+                disabled={exampleDeletePendingId === pendingExampleRemoval.id}
+                onClick={() => setPendingExampleRemoval(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="danger-button"
+                disabled={exampleDeletePendingId === pendingExampleRemoval.id}
+                onClick={() => {
+                  void onRemoveExample(pendingExampleRemoval.id);
+                  setPendingExampleRemoval(null);
+                }}
+                type="button"
+              >
+                {exampleDeletePendingId === pendingExampleRemoval.id ? "Removing..." : "Remove example"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {editingExample ? (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            if (exampleSavePendingId !== editingExample.id) {
+              setEditingExample(null);
+            }
+          }}
+          role="presentation"
+        >
+          <section
+            aria-label="Edit training example"
+            className="detail-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="detail-modal-header">
+              <div>
+                <p className="card-eyebrow">Edit example</p>
+                <h2 className="placeholder-title">{editingExample.label}</h2>
+              </div>
+            </div>
+
+            <p className="card-body">
+              Make small instruction or response adjustments here without removing the example from the dataset.
+            </p>
+
+            <div className="example-edit-grid">
+              <label className="field">
+                <span className="field-label">Instruction</span>
+                <textarea
+                  onChange={(event) => setEditDraft((current) => ({ ...current, instruction: event.target.value }))}
+                  rows={5}
+                  value={editDraft.instruction}
+                />
+              </label>
+
+              <label className="field">
+                <span className="field-label">Response</span>
+                <textarea
+                  onChange={(event) => setEditDraft((current) => ({ ...current, response: event.target.value }))}
+                  rows={7}
+                  value={editDraft.response}
+                />
+              </label>
+            </div>
+
+            <div className="dataset-actions">
+              <button
+                className="ghost-button"
+                disabled={exampleSavePendingId === editingExample.id}
+                onClick={() => setEditingExample(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="topbar-button"
+                disabled={
+                  exampleSavePendingId === editingExample.id ||
+                  !editDraft.instruction.trim() ||
+                  !editDraft.response.trim() ||
+                  (editDraft.instruction.trim() === editingExample.instruction.trim() &&
+                    editDraft.response.trim() === editingExample.response.trim())
+                }
+                onClick={() => {
+                  void onUpdateExample(editingExample.id, editDraft.instruction, editDraft.response)
+                    .then(() => setEditingExample(null))
+                    .catch(() => undefined);
+                }}
+                type="button"
+              >
+                {exampleSavePendingId === editingExample.id ? "Saving..." : "Save changes"}
               </button>
             </div>
           </section>

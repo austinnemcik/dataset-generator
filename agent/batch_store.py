@@ -2,7 +2,7 @@ from sqlmodel import Session, select
 
 from app.core.database import BatchRun, BatchRunItem, Dataset, engine, utcnow
 
-from .batch_summary import build_batch_summary, json_dump, result_from_item, update_batch_counts
+from .batch_summary import build_batch_summary, json_dump, json_load, result_from_item, update_batch_counts
 
 
 TERMINAL_ITEM_STATUSES = {"completed", "failed"}
@@ -130,6 +130,41 @@ def stop_batch_run(batch_run_id: str) -> dict | None:
         return summary
 
 
+def delete_batch_run(batch_run_id: str) -> dict | None:
+    with Session(engine) as session:
+        batch_run = session.exec(select(BatchRun).where(BatchRun.run_id == batch_run_id)).first()
+        if not batch_run:
+            return None
+        items = session.exec(
+            select(BatchRunItem).where(BatchRunItem.batch_run_id == batch_run.id)
+        ).all()
+        if batch_run.status in {"queued", "running", "paused"}:
+            raise ValueError("Only completed, failed, or cancelled batch runs can be removed.")
+        summary = build_batch_summary(batch_run, items)
+        session.delete(batch_run)
+        session.commit()
+        return summary
+
+
+def delete_terminal_batch_runs() -> dict:
+    with Session(engine) as session:
+        runs = session.exec(
+            select(BatchRun)
+            .where(BatchRun.status.in_(["completed", "failed", "cancelled"]))
+            .order_by(BatchRun.created_at)
+        ).all()
+        if not runs:
+            return {"deleted_run_ids": [], "deleted_count": 0}
+
+        deleted_run_ids: list[str] = []
+        for batch_run in runs:
+            deleted_run_ids.append(batch_run.run_id)
+            session.delete(batch_run)
+
+        session.commit()
+        return {"deleted_run_ids": deleted_run_ids, "deleted_count": len(deleted_run_ids)}
+
+
 def restart_failed_batch_run(batch_run_id: str) -> dict | None:
     with Session(engine) as session:
         batch_run = session.exec(select(BatchRun).where(BatchRun.run_id == batch_run_id)).first()
@@ -212,6 +247,7 @@ def prepare_item_attempt(item_id: int) -> tuple[dict, bool] | None:
         if not item:
             return None
         batch_run = session.get(BatchRun, item.batch_run_id)
+        request_payload = json_load(batch_run.request_json, {})
         if item.status in TERMINAL_ITEM_STATUSES:
             return None
         if batch_run.status in BLOCKING_BATCH_STATUSES:
@@ -247,6 +283,8 @@ def prepare_item_attempt(item_id: int) -> tuple[dict, bool] | None:
                 "max_retries": item.max_retries,
                 "retry_backoff_seconds": item.retry_backoff_seconds,
                 "source_material": item.source_material,
+                "source_material_mode": request_payload.get("source_material_mode", "content_and_style"),
+                "conversation_length_mode": request_payload.get("conversation_length_mode", "varied"),
                 "model": item.model,
                 "slot_key": item.slot_key,
                 "seed": item.seed,
