@@ -5,10 +5,13 @@ from sqlalchemy import pool
 
 from alembic import context
 import os
+from pathlib import Path
 from sqlmodel import SQLModel
 from dotenv import load_dotenv
-load_dotenv()
-from database import Dataset, TrainingExample
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(PROJECT_ROOT / "config" / ".env")
+from app.core.database import Dataset, TrainingExample
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -83,3 +86,4 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
+
