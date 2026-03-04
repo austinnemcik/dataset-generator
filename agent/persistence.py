@@ -6,7 +6,7 @@ from app.core.generics import get_run_costs, new_run_id
 
 from .grading import run_grading_agent
 from .naming import run_naming_agent
-from .settings import DEFAULT_MODEL, MIN_SAVE_RATIO, SERVER_URL
+from .settings import SERVER_URL, get_client_settings
 from .types import AgentType
 
 
@@ -15,14 +15,15 @@ async def save_responses(
     prompt: str,
     examples: list[dict],
     topic: str,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     amount: int,
     agent_type: AgentType,
     source_material: str | None = None,
     run_id: str | None = None,
     dataset_key: str | None = None,
 ):
-    model = model or DEFAULT_MODEL
+    client_settings = get_client_settings()
+    model = model or client_settings.default_model
     run_id = run_id or new_run_id()
     dataset_key = dataset_key or topic
     meta = await run_naming_agent(
@@ -47,7 +48,7 @@ async def save_responses(
     )
     graded_examples = graded_result.get("accepted_examples", [])
     graded_category = graded_result.get("category")
-    required_min = max(1, math.ceil((amount or len(examples) or 1) * MIN_SAVE_RATIO))
+    required_min = max(1, math.ceil((amount or len(examples) or 1) * client_settings.min_save_ratio))
     if len(graded_examples) < required_min:
         logger.saveToLog(
             f"[save_responses] Valid examples below threshold. valid={len(graded_examples)} required_min={required_min}. Aborting ingest.",

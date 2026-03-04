@@ -6,7 +6,7 @@ from app.core.generics import TimedLabel, timer
 from .llm import run_agent_async
 from .parsing import parse_json_with_fallback
 from .prompts import load_prompt
-from .settings import MAX_NAMING_JSON_RETRIES, NAMING_MODEL
+from .settings import get_client_settings
 
 
 def _parse_naming_metadata(raw_result: str) -> dict[str, str] | None:
@@ -56,7 +56,9 @@ async def run_naming_agent(
     topic: str | None = None,
     model: str | None = None,
 ):
-    naming_model = NAMING_MODEL
+    client_settings = get_client_settings()
+    naming_model = client_settings.naming_model
+    max_naming_json_retries = client_settings.max_naming_json_retries
     parse_errors: list[str] = []
 
     naming_prompt = f"""
@@ -70,7 +72,7 @@ async def run_naming_agent(
     """
 
     with timer(label=TimedLabel.NAMING_CALL):
-        for attempt in range(MAX_NAMING_JSON_RETRIES + 1):
+        for attempt in range(max_naming_json_retries + 1):
             retry_suffix = ""
             if attempt > 0:
                 retry_suffix = (
@@ -95,14 +97,14 @@ async def run_naming_agent(
             except json.JSONDecodeError as e:
                 parse_errors.append(str(e))
                 logger.saveToLog(
-                    f"[run_naming_agent] Parse failure attempt={attempt + 1}/{MAX_NAMING_JSON_RETRIES + 1}: {e}",
+                    f"[run_naming_agent] Parse failure attempt={attempt + 1}/{max_naming_json_retries + 1}: {e}",
                     "WARNING",
                 )
                 continue
 
             if meta is None:
                 logger.saveToLog(
-                    f"[run_naming_agent] Missing required metadata attempt={attempt + 1}/{MAX_NAMING_JSON_RETRIES + 1}",
+                    f"[run_naming_agent] Missing required metadata attempt={attempt + 1}/{max_naming_json_retries + 1}",
                     "WARNING",
                 )
                 continue

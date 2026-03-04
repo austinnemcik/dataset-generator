@@ -6,13 +6,7 @@ from app.core.generics import TimedLabel, saveScore, timer
 from .llm import run_agent_async
 from .parsing import parse_json_with_fallback
 from .prompts import load_prompt
-from .settings import (
-    DEFAULT_MODEL,
-    GRADING_MODEL,
-    MAX_GRADING_JSON_RETRIES,
-    MIN_GRADING_SCORE,
-    MIN_RESPONSE_CHAR_LENGTH,
-)
+from .settings import get_client_settings
 from .types import AgentType
 
 CATEGORY_TAXONOMY = (
@@ -57,10 +51,11 @@ def _grading_score_metadata(
     run_id: str | None,
     dataset_key: str | None,
 ) -> dict:
+    grader_settings = get_client_settings()
     return {
         "topic": topic,
         "model": model,
-        "grader_model": GRADING_MODEL,
+        "grader_model": grader_settings.grading_model,
         "category": category,
         "input_count": input_count,
         "accepted_count": accepted_count,
@@ -89,6 +84,7 @@ def _safe_float(value: object, default: float = 0.0) -> float:
 
 
 def _evaluate_loaded_rows(batch_examples: list[dict], loaded: dict) -> tuple[list[dict], list[dict], float, str, str | None]:
+    grading_settings = get_client_settings()
     row_map = _row_map(loaded.get("rows", []))
 
     accepted_local: list[dict] = []
@@ -98,8 +94,8 @@ def _evaluate_loaded_rows(batch_examples: list[dict], loaded: dict) -> tuple[lis
         row_score = _safe_float(row.get("score_0_10", 0))
         accept_flag = int(row.get("accept", 0)) if isinstance(row, dict) else 0
         reason = str(row.get("reason", "")) if isinstance(row, dict) else "missing_row"
-        short_response = len(str(ex.get("response", "")).strip()) < MIN_RESPONSE_CHAR_LENGTH
-        if accept_flag == 1 and row_score >= MIN_GRADING_SCORE and not short_response:
+        short_response = len(str(ex.get("response", "")).strip()) < grading_settings.min_response_char_length
+        if accept_flag == 1 and row_score >= grading_settings.min_grading_score and not short_response:
             accepted_local.append(ex)
         else:
             rejected_local.append(
@@ -142,7 +138,8 @@ async def run_grading_agent(
     run_id: str | None = None,
     dataset_key: str | None = None,
 ):
-    model = model or DEFAULT_MODEL
+    grading_settings = get_client_settings()
+    model = model or grading_settings.default_model
 
     async def _grade_batch_with_json_retries(
         batch_examples: list[dict],
@@ -152,7 +149,7 @@ async def run_grading_agent(
     ):
         retries = 0
         last_error = None
-        while retries <= MAX_GRADING_JSON_RETRIES:
+        while retries <= grading_settings.max_grading_json_retries:
             retry_note = ""
             if retries > 0:
                 retry_note = (
@@ -186,13 +183,13 @@ Rules:
 - rows length must equal input dataset length.
 - idx must be 0-based and align to input order.
 - category must be exactly one of: {", ".join(CATEGORY_TAXONOMY)}.
-- accept = 1 only when score_0_10 >= {MIN_GRADING_SCORE}.
+- accept = 1 only when score_0_10 >= {grading_settings.min_grading_score}.
 - No markdown. No extra keys outside schema.{retry_note}
 """
             result = await run_agent_async(
                 system_prompt=load_prompt("grading"),
                 user_prompt=user_prompt,
-                model=GRADING_MODEL,
+                model=grading_settings.grading_model,
                 label=TimedLabel.GRADING_CALL,
                 run_id=run_id,
                 dataset_key=dataset_key,
@@ -331,7 +328,7 @@ Rejected examples:
     )
     logger.saveToLog(
         (
-            f"[run_grading_agent] Batch summary generator_model={model} grader_model={GRADING_MODEL} "
+            f"[run_grading_agent] Batch summary generator_model={model} grader_model={grading_settings.grading_model} "
             f"topic={topic} category={dataset_category} input={len(examples)} accepted={len(accepted)} "
             f"rejected={rejected_count} dataset_score={dataset_score}"
         ),

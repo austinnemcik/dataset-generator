@@ -6,7 +6,7 @@ from app.core.generics import TimedLabel
 from .llm import run_agent_async
 from .parsing import parse_json_with_fallback
 from .prompts import build_prompt, load_prompt
-from .settings import DEFAULT_MODEL, MAX_GENERATION_RETRIES
+from .settings import get_client_settings
 from .types import AgentType
 
 
@@ -15,16 +15,18 @@ async def generate_dataset(
     amt: int,
     source_material: str | None = None,
     agent_type: AgentType = AgentType.qa,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     run_id: str | None = None,
     dataset_key: str | None = None,
     seed: int | None = None,
 ) -> list[dict]:
-    model = model or DEFAULT_MODEL
+    client_settings = get_client_settings()
+    model = model or client_settings.default_model
+    max_generation_retries = client_settings.max_generation_retries
     system = load_prompt(agent_type.value)
     prompt = build_prompt(agent_type, topic, amt, source_material, seed=seed)
     parse_errors: list[str] = []
-    for attempt in range(MAX_GENERATION_RETRIES + 1):
+    for attempt in range(max_generation_retries + 1):
         retry_suffix = ""
         if attempt > 0:
             retry_suffix = (
@@ -50,7 +52,7 @@ async def generate_dataset(
         except json.JSONDecodeError as e:
             parse_errors.append(str(e))
             logger.saveToLog(
-                f"[generate_dataset] Parse failure attempt={attempt + 1}/{MAX_GENERATION_RETRIES + 1}: {e}",
+                f"[generate_dataset] Parse failure attempt={attempt + 1}/{max_generation_retries + 1}: {e}",
                 "WARNING",
             )
             continue
@@ -68,7 +70,7 @@ async def generate_dataset(
             return valid, prompt
 
         logger.saveToLog(
-            f"[generate_dataset] Parsed array but no valid items attempt={attempt + 1}/{MAX_GENERATION_RETRIES + 1}",
+            f"[generate_dataset] Parsed array but no valid items attempt={attempt + 1}/{max_generation_retries + 1}",
             "WARNING",
         )
 

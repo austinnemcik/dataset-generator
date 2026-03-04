@@ -335,3 +335,4 @@ def chunk_text(text: str, *, chunk_char_size: int = 2000, chunk_overlap: int = 2
             break
         start = max(0, end - chunk_overlap)
     return chunks
+

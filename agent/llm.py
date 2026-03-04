@@ -4,7 +4,7 @@ from app.core.generics import TimedLabel, saveCost, timer
 
 import app.core.logger as logger
 
-from .settings import DEFAULT_MODEL, calculate_price, client
+from .settings import calculate_price, client, get_client_settings
 
 
 def _summarize_for_log(text: str, max_chars: int = 600) -> str:
@@ -22,14 +22,14 @@ async def run_agent_async(
     *,
     system_prompt: str,
     user_prompt: str,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     label: TimedLabel | None = None,
     run_id: str | None = None,
     dataset_key: str | None = None,
     topic: str | None = None,
     stage: str = "unknown",
 ):
-    model = model or DEFAULT_MODEL
+    model = model or get_client_settings().default_model
     if label:
         with timer(label):
             try:

@@ -6,10 +6,11 @@ import httpx
 from fastapi.responses import FileResponse, JSONResponse
 from funkybob import RandomNameGenerator
 from sqlmodel import Session, select
+from sqlalchemy import func, or_
 
 from agent import generate_dataset, save_responses
 from agent.grading import CATEGORY_TAXONOMY
-from app.core.database import Dataset, ExportHistory, ImportHistory, SourceDocument, get_session
+from app.core.database import Dataset, ExportHistory, ImportHistory, SourceDocument, TrainingExample, get_session
 from app.core.generics import new_run_id, response_builder
 from routes.dataset_models import (
     ExportRequest,
@@ -57,6 +58,31 @@ def _document_summary(document: SourceDocument) -> dict:
     }
 
 
+def _dataset_summary(dataset: Dataset, example_count: int = 0) -> dict:
+    return {
+        "id": dataset.id,
+        "name": dataset.name,
+        "description": dataset.description,
+        "category": dataset.category,
+        "model": dataset.model,
+        "example_count": example_count,
+        "generation_cost": round(float(dataset.generation_cost or 0.0), 8),
+        "grading_cost": round(float(dataset.grading_cost or 0.0), 8),
+        "total_cost": round(float(dataset.total_cost or 0.0), 8),
+    }
+
+
+def _dataset_example_preview(examples: list[TrainingExample], limit: int = 3) -> list[dict]:
+    return [
+        {
+            "id": example.id,
+            "instruction": example.instruction,
+            "response": example.response,
+        }
+        for example in examples[:limit]
+    ]
+
+
 # Registers the full dataset/data API surface for CRUD, intake, import/export,
 # cost summaries, and source document operations. The route bodies stay here,
 # while heavier ingest/import/export workflows are delegated into services.
@@ -73,6 +99,99 @@ def register_data_routes(router: APIRouter):
                 "count": len(CATEGORY_TAXONOMY),
             },
         )
+
+    @router.get("")
+    def list_datasets(
+        limit: int = Query(default=100, ge=1, le=500),
+        q: str | None = Query(default=None),
+        category: str | None = Query(default=None),
+        session: Session = Depends(get_session),
+    ):
+        try:
+            stmt = select(Dataset).order_by(Dataset.id.desc())
+            if q:
+                query = f"%{q.strip()}%"
+                stmt = stmt.where(
+                    or_(
+                        Dataset.name.ilike(query),
+                        Dataset.description.ilike(query),
+                        Dataset.category.ilike(query),
+                        Dataset.model.ilike(query),
+                    )
+                )
+            if category:
+                normalized_category = category.strip().lower()
+                if normalized_category == "uncategorized":
+                    stmt = stmt.where(Dataset.category.is_(None))
+                else:
+                    stmt = stmt.where(Dataset.category == category)
+            datasets = session.exec(stmt.limit(limit)).all()
+            dataset_ids = [dataset.id for dataset in datasets if dataset.id is not None]
+            count_rows = session.exec(
+                select(TrainingExample.dataset_id, func.count(TrainingExample.id))
+                .where(TrainingExample.dataset_id.in_(dataset_ids))
+                .group_by(TrainingExample.dataset_id)
+            ).all() if dataset_ids else []
+            example_counts = {dataset_id: int(count) for dataset_id, count in count_rows}
+            rows = [_dataset_summary(dataset, example_counts.get(dataset.id, 0)) for dataset in datasets]
+            return response_builder(
+                success=True,
+                message="Successfully returned datasets.",
+                statusCode=200,
+                data={"datasets": rows, "count": len(rows), "query": q, "category": category},
+            )
+        except Exception as e:
+            _log_route_error("dataset_list.unexpected_error", e, limit=limit, query=q, category=category)
+            return response_builder(
+                success=False,
+                message="An error occurred while fetching datasets.",
+                statusCode=500,
+            )
+
+    @router.get("/{dataset_id}")
+    def get_dataset_detail(
+        dataset_id: int,
+        example_offset: int = Query(default=0, ge=0),
+        example_limit: int = Query(default=3, ge=1, le=20),
+        session: Session = Depends(get_session),
+    ):
+        try:
+            dataset = session.get(Dataset, dataset_id)
+            if not dataset:
+                raise ValueError("Dataset not found.")
+            example_count = session.exec(
+                select(func.count(TrainingExample.id)).where(TrainingExample.dataset_id == dataset_id)
+            ).one()
+            examples = session.exec(
+                select(TrainingExample)
+                .where(TrainingExample.dataset_id == dataset_id)
+                .order_by(TrainingExample.id)
+                .offset(example_offset)
+                .limit(example_limit)
+            ).all()
+            return response_builder(
+                success=True,
+                message="Successfully returned dataset detail.",
+                statusCode=200,
+                data={
+                    "dataset": {
+                        **_dataset_summary(dataset, int(example_count)),
+                        "examples_preview": _dataset_example_preview(examples),
+                        "examples_preview_offset": example_offset,
+                        "examples_preview_limit": example_limit,
+                    }
+                },
+            )
+        except ValueError as e:
+            _log_route_error("dataset_detail.validation_failed", e, dataset_id=dataset_id)
+            return response_builder(success=False, message=str(e), statusCode=404)
+        except Exception as e:
+            _log_route_error("dataset_detail.unexpected_error", e, dataset_id=dataset_id)
+            return response_builder(
+                success=False,
+                message="An error occurred while fetching dataset detail.",
+                statusCode=500,
+            )
 
     @router.get("/intake/reference")
     def intake_reference_card():

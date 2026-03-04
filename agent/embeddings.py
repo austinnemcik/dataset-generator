@@ -3,7 +3,7 @@ from app.core.generics import TimedLabel, timer
 from sentence_transformers import SentenceTransformer
 import app.core.logger as logger
 
-from .settings import THRESHOLD
+from .settings import get_client_settings
 
 _model: SentenceTransformer | None = None
 
@@ -42,8 +42,9 @@ def cosine_similarity(a: list[float], b: list[float]):
 def is_duplicate(
     new_embedding: list[float],
     existing_embeddings: list[list[float]],
-    threshold: float = THRESHOLD,
+    threshold: float | None = None,
 ):
+    threshold = threshold if threshold is not None else get_client_settings().threshold
     for existing in existing_embeddings:
         if cosine_similarity(new_embedding, existing) >= threshold:
             logger.saveToLog("Discarding duplicate example", "INFO")

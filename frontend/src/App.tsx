@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AppShell } from "./components/AppShell";
+import { DashboardView } from "./components/DashboardView";
+import { DatasetsView } from "./components/DatasetsView";
+import { GenerationView } from "./components/GenerationView";
+import { ModelPickerModal } from "./components/ModelPickerModal";
+import { DocumentsView, ExportsView, SettingsView } from "./components/ResourceViews";
+import { SearchResults } from "./components/SearchResults";
 import "./styles.css";
 
 type NavItem = {
@@ -15,9 +22,22 @@ type DatasetRow = {
   description: string;
   category: string | null;
   model: string | null;
+  exampleCount: number;
   generationCost: number;
   gradingCost: number;
   totalCost: number;
+};
+
+type ExamplePreview = {
+  id: number | null;
+  instruction: string;
+  response: string;
+};
+
+type DatasetDetail = DatasetRow & {
+  examplesPreview: ExamplePreview[];
+  examplesPreviewOffset: number;
+  examplesPreviewLimit: number;
 };
 
 type BatchRunRow = {
@@ -31,6 +51,36 @@ type BatchRunRow = {
   topic: string | null;
   requested_agent: string | null;
   created_at: string | null;
+  updated_at: string | null;
+  completed_at: string | null;
+};
+
+type BatchRunResult = {
+  index: number;
+  run_id: string;
+  dataset_id: number | null;
+  status: "saved" | "failed";
+  topic: string | null;
+  agent: string | null;
+  error: string | null;
+};
+
+type BatchRunDetail = {
+  batch_run_id: string;
+  status: BatchRunRow["status"];
+  requested_runs: number;
+  saved: number;
+  failed: number;
+  queued: number;
+  running: number;
+  topic: string | null;
+  requested_agent: string | null;
+  random_agent: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  results: BatchRunResult[];
 };
 
 type DocumentRow = {
@@ -41,6 +91,18 @@ type DocumentRow = {
   chunk_count: number;
   created_at: string | null;
   source_material_ref: string;
+};
+
+type DocumentChunk = {
+  id: number;
+  chunk_index: number;
+  char_count: number;
+  content: string;
+};
+
+type DocumentDetail = {
+  document: DocumentRow;
+  chunks: DocumentChunk[];
 };
 
 type ExportRow = {
@@ -56,6 +118,16 @@ type ExportRow = {
   created_at: string | null;
 };
 
+type ExportFormState = {
+  datasetIds: string;
+  format: "sharegpt" | "chatml" | "alpaca";
+  minScore: string;
+  maxExamples: string;
+  trainValSplit: string;
+  dedupePass: boolean;
+  shuffle: boolean;
+};
+
 type DashboardStats = {
   datasets: number;
   training_examples: number;
@@ -63,6 +135,33 @@ type DashboardStats = {
   ingest_time: number;
   grading_time: number;
   api_cost: number;
+};
+
+type CreditsSummary = {
+  balance: number | null;
+  totalCredits: number | null;
+  totalUsage: number | null;
+};
+
+type ModelOption = {
+  id: string;
+  name: string;
+};
+
+type ModelPickerTarget = "generation" | "default_model" | "grading_model" | "naming_model" | null;
+
+type SettingsValues = {
+  default_model: string;
+  grading_model: string;
+  naming_model: string;
+  threshold: number;
+  min_grading_score: number;
+  min_response_char_length: number;
+  max_grading_json_retries: number;
+  max_naming_json_retries: number;
+  max_low_quality_retries: number;
+  max_generation_retries: number;
+  min_save_ratio: number;
 };
 
 type BatchGenerateResponse = {
@@ -74,6 +173,58 @@ type BatchGenerateResponse = {
 };
 
 type HealthState = "checking" | "healthy" | "offline";
+
+type SearchSection = {
+  id: string;
+  label: string;
+  items: Array<{
+    id: string;
+    title: string;
+    meta: string;
+    view: string;
+    targetId?: number;
+    targetRunId?: string;
+    kind?: "dataset" | "run" | "document" | "export";
+  }>;
+};
+
+type ToastState = {
+  tone: "success" | "error";
+  message: string;
+};
+
+type BatchStreamEvent = {
+  id: string;
+  runId: string;
+  datasetId: number | null;
+  status: string;
+  topic: string | null;
+  agent: string | null;
+  score: number | null;
+  cost: number | null;
+  category: string | null;
+  error: string | null;
+};
+
+type GenerationFormState = {
+  topics: string;
+  agentTypes: string;
+  amount: string;
+  exAmt: string;
+  model: string;
+  maxConcurrency: string;
+};
+
+type PersistedUiState = {
+  activeView: string;
+  selectedDatasetId: number;
+  selectedBatchRunId: string;
+  selectedDocumentId: number;
+  activeCategory: string;
+  documentFilter: string;
+  generationForm: GenerationFormState;
+  exportForm: ExportFormState;
+};
 
 const navItems: NavItem[] = [
   {
@@ -88,7 +239,7 @@ const navItems: NavItem[] = [
     label: "Datasets",
     eyebrow: "Datasets",
     title: "Dataset library",
-    description: "Browse the current dataset inventory with the metadata available from the existing API surface.",
+    description: "Browse the current dataset inventory with the metadata available from the API.",
   },
   {
     id: "generation",
@@ -116,11 +267,12 @@ const navItems: NavItem[] = [
     label: "Settings",
     eyebrow: "Settings",
     title: "Workspace settings",
-    description: "This area still needs a backend settings endpoint before it can become functional.",
+    description: "The backend settings endpoints exist now; this UI just needs its editing surface wired in.",
   },
 ];
 
 const emptyDashboardCards = [
+  { eyebrow: "Balance", title: "--", body: "Loading current OpenRouter balance." },
   { eyebrow: "Datasets", title: "--", body: "Loading total dataset count." },
   { eyebrow: "Examples", title: "--", body: "Loading stored training examples." },
   { eyebrow: "Embedding", title: "--", body: "Loading average embedding time." },
@@ -129,7 +281,7 @@ const emptyDashboardCards = [
   { eyebrow: "API Cost", title: "--", body: "Loading total API cost." },
 ];
 
-const defaultGenerationForm = {
+const defaultGenerationForm: GenerationFormState = {
   topics: "Code review and debugging\nSecurity vulnerability identification",
   agentTypes: "qa, instruction_following, adversarial",
   amount: "120",
@@ -137,6 +289,18 @@ const defaultGenerationForm = {
   model: "google/gemini-2.5-flash",
   maxConcurrency: "25",
 };
+
+const defaultExportForm: ExportFormState = {
+  datasetIds: "",
+  format: "sharegpt",
+  minScore: "",
+  maxExamples: "",
+  trainValSplit: "",
+  dedupePass: false,
+  shuffle: false,
+};
+
+const UI_STATE_STORAGE_KEY = "pdata.frontend.ui-state.v1";
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -151,55 +315,289 @@ function formatDate(value: string | null): string {
   return parsed.toLocaleString();
 }
 
-function parseDatasetPayload(raw: string): DatasetRow | null {
-  try {
-    const parsed = JSON.parse(raw) as {
-      dataset?: Array<Record<string, string | number | null>>;
-    };
-    const rows = parsed.dataset ?? [];
-    const lookup = Object.assign({}, ...rows);
-    return {
-      id: Number(lookup.id ?? 0),
-      name: String(lookup.name ?? "Unnamed dataset"),
-      description: String(lookup.description ?? ""),
-      category: lookup.category ? String(lookup.category) : null,
-      model: lookup.model ? String(lookup.model) : null,
-      generationCost: Number(lookup.generation_cost ?? 0),
-      gradingCost: Number(lookup.grading_cost ?? 0),
-      totalCost: Number(lookup.total_cost ?? 0),
-    };
-  } catch {
-    return null;
+function parseNumericApiValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
   }
+
+  if (typeof value === "string") {
+    const normalized = value.replace(/[^0-9.-]/g, "").trim();
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function dismissSearch(setSearchQuery: (value: string) => void) {
+  setSearchQuery("");
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+}
+
+function uniqueSearchItems(items: SearchSection["items"]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.kind ?? item.view}:${item.id}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function App() {
   const [activeView, setActiveView] = useState<string>("dashboard");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedDatasetId, setSelectedDatasetId] = useState<number>(0);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [dashboardError, setDashboardError] = useState<string>("");
+  const [dashboardLoading, setDashboardLoading] = useState<boolean>(false);
+  const [creditsSummary, setCreditsSummary] = useState<CreditsSummary>({
+    balance: null,
+    totalCredits: null,
+    totalUsage: null,
+  });
   const [healthState, setHealthState] = useState<HealthState>("checking");
   const [datasets, setDatasets] = useState<DatasetRow[]>([]);
   const [datasetsError, setDatasetsError] = useState<string>("");
+  const [datasetDetail, setDatasetDetail] = useState<DatasetDetail | null>(null);
   const [batchRuns, setBatchRuns] = useState<BatchRunRow[]>([]);
   const [batchRunsError, setBatchRunsError] = useState<string>("");
+  const [selectedBatchRunId, setSelectedBatchRunId] = useState<string>("");
+  const [selectedBatchRunDetail, setSelectedBatchRunDetail] = useState<BatchRunDetail | null>(null);
+  const [batchRunDetailLoading, setBatchRunDetailLoading] = useState<boolean>(false);
+  const [batchRunDetailError, setBatchRunDetailError] = useState<string>("");
+  const [batchStreamEvents, setBatchStreamEvents] = useState<BatchStreamEvent[]>([]);
+  const [batchStreamStatus, setBatchStreamStatus] = useState<"idle" | "connecting" | "live" | "offline">("idle");
+  const [batchActionPending, setBatchActionPending] = useState<string>("");
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [documentsError, setDocumentsError] = useState<string>("");
+  const [documentsLoading, setDocumentsLoading] = useState<boolean>(false);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<number>(0);
+  const [selectedDocumentDetail, setSelectedDocumentDetail] = useState<DocumentDetail | null>(null);
+  const [documentDetailLoading, setDocumentDetailLoading] = useState<boolean>(false);
+  const [documentActionPending, setDocumentActionPending] = useState<boolean>(false);
+  const [isDocumentViewOpen, setIsDocumentViewOpen] = useState<boolean>(false);
+  const [isDocumentDeleteConfirmOpen, setIsDocumentDeleteConfirmOpen] = useState<boolean>(false);
+  const [documentUploadFile, setDocumentUploadFile] = useState<File | null>(null);
+  const [documentUploadMode, setDocumentUploadMode] = useState<"examples" | "source_material" | "pretraining_data">("source_material");
+  const [documentUploadPending, setDocumentUploadPending] = useState<boolean>(false);
+  const [documentUploadMessage, setDocumentUploadMessage] = useState<string>("");
+  const [documentFilter, setDocumentFilter] = useState<string>("");
+  const [documentUploadAdvancedOpen, setDocumentUploadAdvancedOpen] = useState<boolean>(false);
+  const [documentUploadChunkSize, setDocumentUploadChunkSize] = useState<string>("2000");
+  const [documentUploadChunkOverlap, setDocumentUploadChunkOverlap] = useState<string>("200");
+  const [documentChunksExpanded, setDocumentChunksExpanded] = useState<boolean>(false);
+  const [scraperText, setScraperText] = useState<string>("");
+  const [scraperDatasetName, setScraperDatasetName] = useState<string>("");
+  const [scraperPending, setScraperPending] = useState<boolean>(false);
+  const [scraperMessage, setScraperMessage] = useState<string>("");
   const [exportsHistory, setExportsHistory] = useState<ExportRow[]>([]);
   const [exportsError, setExportsError] = useState<string>("");
-  const [generationForm, setGenerationForm] = useState(defaultGenerationForm);
+  const [exportsLoading, setExportsLoading] = useState<boolean>(false);
+  const [exportActionPendingId, setExportActionPendingId] = useState<number | null>(null);
+  const [exportCreatePending, setExportCreatePending] = useState<boolean>(false);
+  const [exportMessage, setExportMessage] = useState<string>("");
+  const [exportForm, setExportForm] = useState<ExportFormState>(defaultExportForm);
+  const [isExportPickerOpen, setIsExportPickerOpen] = useState<boolean>(false);
+  const [exportPickerQuery, setExportPickerQuery] = useState<string>("");
+  const [generationForm, setGenerationForm] = useState<GenerationFormState>(defaultGenerationForm);
   const [generationMessage, setGenerationMessage] = useState<string>("");
   const [generationSubmitting, setGenerationSubmitting] = useState<boolean>(false);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [modelOptionsLoading, setModelOptionsLoading] = useState<boolean>(false);
+  const [modelPickerTarget, setModelPickerTarget] = useState<ModelPickerTarget>(null);
+  const [modelPickerQuery, setModelPickerQuery] = useState<string>("");
+  const [settings, setSettings] = useState<SettingsValues | null>(null);
+  const [initialSettings, setInitialSettings] = useState<SettingsValues | null>(null);
+  const [settingsError, setSettingsError] = useState<string>("");
+  const [settingsMessage, setSettingsMessage] = useState<string>("");
+  const [settingsLoading, setSettingsLoading] = useState<boolean>(false);
+  const [settingsSaving, setSettingsSaving] = useState<boolean>(false);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [datasetDeletePending, setDatasetDeletePending] = useState<boolean>(false);
+  const [isDatasetViewOpen, setIsDatasetViewOpen] = useState<boolean>(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState<boolean>(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [datasetsRefreshKey, setDatasetsRefreshKey] = useState<number>(0);
+  const [examplePreviewOffset, setExamplePreviewOffset] = useState<number>(0);
+  const [batchRunsRefreshKey, setBatchRunsRefreshKey] = useState<number>(0);
+  const [documentsRefreshKey, setDocumentsRefreshKey] = useState<number>(0);
+  const [uiStateHydrated, setUiStateHydrated] = useState<boolean>(false);
 
   const currentView = useMemo(
     () => navItems.find((item) => item.id === activeView) ?? navItems[0],
     [activeView],
   );
 
-  const selectedDataset = useMemo(
-    () => datasets.find((dataset) => dataset.id === selectedDatasetId) ?? datasets[0] ?? null,
-    [datasets, selectedDatasetId],
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(UI_STATE_STORAGE_KEY);
+      if (!raw) {
+        setUiStateHydrated(true);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as Partial<PersistedUiState>;
+
+      if (typeof parsed.activeView === "string" && navItems.some((item) => item.id === parsed.activeView)) {
+        setActiveView(parsed.activeView);
+      }
+      if (typeof parsed.selectedDatasetId === "number" && parsed.selectedDatasetId >= 0) {
+        setSelectedDatasetId(parsed.selectedDatasetId);
+      }
+      if (typeof parsed.selectedBatchRunId === "string") {
+        setSelectedBatchRunId(parsed.selectedBatchRunId);
+      }
+      if (typeof parsed.selectedDocumentId === "number" && parsed.selectedDocumentId >= 0) {
+        setSelectedDocumentId(parsed.selectedDocumentId);
+      }
+      if (typeof parsed.activeCategory === "string") {
+        setActiveCategory(parsed.activeCategory);
+      }
+      if (typeof parsed.documentFilter === "string") {
+        setDocumentFilter(parsed.documentFilter);
+      }
+      if (parsed.generationForm) {
+        setGenerationForm((current) => ({ ...current, ...parsed.generationForm }));
+      }
+      if (parsed.exportForm) {
+        setExportForm((current) => ({ ...current, ...parsed.exportForm }));
+      }
+    } catch {
+      window.localStorage.removeItem(UI_STATE_STORAGE_KEY);
+    } finally {
+      setUiStateHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!uiStateHydrated) {
+      return;
+    }
+
+    const nextState: PersistedUiState = {
+      activeView,
+      selectedDatasetId,
+      selectedBatchRunId,
+      selectedDocumentId,
+      activeCategory,
+      documentFilter,
+      generationForm,
+      exportForm,
+    };
+
+    window.localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(nextState));
+  }, [
+    activeCategory,
+    activeView,
+    documentFilter,
+    exportForm,
+    generationForm,
+    selectedBatchRunId,
+    selectedDatasetId,
+    selectedDocumentId,
+    uiStateHydrated,
+  ]);
+
+  const trimmedSearch = searchQuery.trim();
+
+  const selectedDataset = useMemo(() => {
+    const fromList = datasets.find((dataset) => dataset.id === selectedDatasetId) ?? null;
+    if (datasetDetail && fromList && datasetDetail.id === fromList.id) {
+      return { ...fromList, ...datasetDetail };
+    }
+    return fromList;
+  }, [datasetDetail, datasets, selectedDatasetId]);
+
+  const selectedDocument = useMemo(
+    () => documents.find((document) => document.id === selectedDocumentId) ?? null,
+    [documents, selectedDocumentId],
   );
+
+  const filteredDocuments = useMemo(() => {
+    const query = documentFilter.trim().toLowerCase();
+    if (!query) {
+      return documents;
+    }
+
+    return documents.filter((document) =>
+      [document.name, document.file_type, document.source_material_ref]
+        .some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [documentFilter, documents]);
+
+  const selectedExportDatasetIds = useMemo(
+    () =>
+      exportForm.datasetIds
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0),
+    [exportForm.datasetIds],
+  );
+
+  const exportPickerDatasets = useMemo(() => {
+    const query = exportPickerQuery.trim().toLowerCase();
+    const sorted = [...datasets].sort((left, right) => left.name.localeCompare(right.name));
+    if (!query) {
+      return sorted.slice(0, 100);
+    }
+
+    return sorted
+      .filter((dataset) =>
+        dataset.name.toLowerCase().includes(query) || String(dataset.id).includes(query),
+      )
+      .slice(0, 100);
+  }, [datasets, exportPickerQuery]);
+
+  const filteredModelOptions = useMemo(() => {
+    const query = modelPickerQuery.trim().toLowerCase();
+    if (!query) {
+      return modelOptions.slice(0, 100);
+    }
+
+    return modelOptions
+      .filter((model) => model.id.toLowerCase().includes(query) || model.name.toLowerCase().includes(query))
+      .slice(0, 100);
+  }, [modelOptions, modelPickerQuery]);
+
+  const datasetCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(datasets.map((dataset) => dataset.category).filter((category): category is string => Boolean(category))),
+      ).sort(),
+    [datasets],
+  );
+
+  const settingsValidationError = useMemo(() => {
+    if (!settings) {
+      return "";
+    }
+    if (settings.threshold < 0 || settings.threshold > 1) {
+      return "Duplicate threshold must be between 0 and 1.";
+    }
+    if (settings.min_save_ratio < 0 || settings.min_save_ratio > 1) {
+      return "Min save ratio must be between 0 and 1.";
+    }
+    if (settings.min_grading_score < 0 || settings.min_grading_score > 10) {
+      return "Min grading score must be between 0 and 10.";
+    }
+    if (settings.min_response_char_length < 1) {
+      return "Min response length must be at least 1.";
+    }
+    if (settings.max_grading_json_retries < 0 || settings.max_naming_json_retries < 0) {
+      return "JSON retry counts cannot be negative.";
+    }
+    if (settings.max_low_quality_retries < 0 || settings.max_generation_retries < 0) {
+      return "Retry counts cannot be negative.";
+    }
+    return "";
+  }, [settings]);
 
   const statCards = useMemo(() => {
     if (!dashboardStats) {
@@ -210,6 +608,14 @@ function App() {
     }
 
     return [
+      {
+        eyebrow: "Balance",
+        title: creditsSummary.balance === null ? "--" : `$${creditsSummary.balance.toFixed(2)}`,
+        body:
+          creditsSummary.totalCredits === null || creditsSummary.totalUsage === null
+            ? "Current OpenRouter balance from the credits API."
+            : `$${creditsSummary.totalCredits.toFixed(2)} total credits - $${creditsSummary.totalUsage.toFixed(2)} used`,
+      },
       {
         eyebrow: "Datasets",
         title: dashboardStats.datasets.toLocaleString(),
@@ -241,13 +647,212 @@ function App() {
         body: "Accumulated API cost recorded in the benchmark summary.",
       },
     ];
-  }, [dashboardError, dashboardStats]);
+  }, [creditsSummary.balance, creditsSummary.totalCredits, creditsSummary.totalUsage, dashboardError, dashboardStats]);
+
+  const quickSearchSections = useMemo<SearchSection[]>(() => {
+    if (!trimmedSearch) {
+      return [];
+    }
+
+    const query = trimmedSearch.toLowerCase();
+    const includesQuery = (...values: Array<string | number | null | undefined>) =>
+      values.some((value) => String(value ?? "").toLowerCase().includes(query));
+
+    const datasetItems = datasets
+      .filter((dataset) =>
+        includesQuery(dataset.name, dataset.description, dataset.category, dataset.model, dataset.id),
+      )
+      .map((dataset) => ({
+        id: `dataset-${dataset.id}`,
+        title: dataset.name,
+        meta: `${dataset.category ?? "uncategorized"} - ${dataset.model ?? "unknown model"}`,
+        view: "datasets",
+        targetId: dataset.id,
+        kind: "dataset" as const,
+      }));
+
+    const batchItems = batchRuns
+      .filter((run) => includesQuery(run.run_id, run.topic, run.requested_agent, run.status))
+      .map((run) => ({
+        id: `run-${run.run_id}`,
+        title: run.topic || run.run_id,
+        meta: `${run.status} - ${run.saved} saved - ${run.failed} failed`,
+        view: "generation",
+        targetRunId: run.run_id,
+        kind: "run" as const,
+      }));
+
+    const documentItems = documents
+      .filter((document) => includesQuery(document.name, document.file_type, document.source_material_ref))
+      .map((document) => ({
+        id: `document-${document.id}`,
+        title: document.name,
+        meta: `${document.file_type} - ${document.chunk_count} chunks`,
+        view: "documents",
+        targetId: document.id,
+        kind: "document" as const,
+      }));
+
+    const exportItems = exportsHistory
+      .filter((exportRow) =>
+        includesQuery(exportRow.output_filename, exportRow.export_format, exportRow.status, exportRow.id),
+      )
+      .map((exportRow) => ({
+        id: `export-${exportRow.id}`,
+        title: exportRow.output_filename || `export-${exportRow.id}`,
+        meta: `${exportRow.export_format} - ${exportRow.total_examples} examples`,
+        view: "exports",
+        kind: "export" as const,
+      }));
+
+    return [
+      { id: "datasets", label: "Datasets", items: uniqueSearchItems(datasetItems).slice(0, 4) },
+      { id: "runs", label: "Batch Runs", items: uniqueSearchItems(batchItems).slice(0, 4) },
+      { id: "documents", label: "Documents", items: uniqueSearchItems(documentItems).slice(0, 3) },
+      { id: "exports", label: "Exports", items: uniqueSearchItems(exportItems).slice(0, 3) },
+    ].filter((section) => section.items.length > 0);
+  }, [batchRuns, datasets, documents, exportsHistory, trimmedSearch]);
+
+  const dashboardRecentRuns = useMemo(
+    () =>
+      batchRuns.slice(0, 4).map((run) => ({
+        runId: run.run_id,
+        topic: run.topic,
+        status: run.status,
+        saved: run.saved,
+        failed: run.failed,
+      })),
+    [batchRuns],
+  );
+
+  const dashboardRecentDatasets = useMemo(
+    () =>
+      datasets.slice(0, 4).map((dataset) => ({
+        id: dataset.id,
+        name: dataset.name,
+        category: dataset.category,
+        exampleCount: dataset.exampleCount,
+      })),
+    [datasets],
+  );
+
+  const dashboardRecentDocuments = useMemo(
+    () =>
+      documents.slice(0, 4).map((document) => ({
+        id: document.id,
+        name: document.name,
+        fileType: document.file_type,
+        chunkCount: document.chunk_count,
+      })),
+    [documents],
+  );
+
+  const dashboardRecentExports = useMemo(
+    () =>
+      exportsHistory.slice(0, 4).map((exportRow) => ({
+        id: exportRow.id,
+        name: exportRow.output_filename || `export-${exportRow.id}`,
+        format: exportRow.export_format,
+        totalExamples: exportRow.total_examples,
+      })),
+    [exportsHistory],
+  );
+
+  const dashboardAttentionItems = useMemo(() => {
+    const items: string[] = [];
+    const failedRuns = batchRuns.filter((run) => run.failed > 0);
+    const runningRuns = batchRuns.filter((run) => run.status === "running" || run.status === "queued");
+    const uncategorizedCount = datasets.filter((dataset) => !dataset.category).length;
+    const artifactGaps = exportsHistory.filter((exportRow) => !exportRow.has_artifact).length;
+
+    if (failedRuns.length > 0) {
+      items.push(`${failedRuns.length} recent batch runs have failures worth reviewing.`);
+    }
+    if (runningRuns.length > 0) {
+      items.push(`${runningRuns.length} batch runs are still active right now.`);
+    }
+    if (uncategorizedCount > 0) {
+      items.push(`${uncategorizedCount} datasets are still uncategorized.`);
+    }
+    if (artifactGaps > 0) {
+      items.push(`${artifactGaps} exports do not currently have a downloadable artifact.`);
+    }
+
+    return items.slice(0, 4);
+  }, [batchRuns, datasets, exportsHistory]);
+
+  const loadBatchRuns = useCallback(async (signal?: AbortSignal) => {
+    setBatchRunsError("");
+    const response = await fetch("/api/dataset/batch", { signal });
+    if (!response.ok) {
+      throw new Error(`Batch request failed with ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      data?: {
+        runs?: BatchRunRow[];
+      };
+    };
+    const rows = payload.data?.runs ?? [];
+    setBatchRuns(rows);
+    setSelectedBatchRunId((current) => (rows.some((run) => run.run_id === current) ? current : rows[0]?.run_id ?? ""));
+  }, []);
+
+  const loadBatchRunDetail = useCallback(
+    async (runId: string, signal?: AbortSignal) => {
+      if (!runId) {
+        setSelectedBatchRunDetail(null);
+        setBatchRunDetailError("");
+        return;
+      }
+
+      setBatchRunDetailError("");
+      const response = await fetch(`/api/dataset/batch/${runId}`, { signal });
+      if (!response.ok) {
+        throw new Error(`Batch detail request failed with ${response.status}`);
+      }
+
+      const payload = (await response.json()) as {
+        data?: BatchRunDetail;
+      };
+      if (!payload.data) {
+        throw new Error("Batch detail response was empty.");
+      }
+      setSelectedBatchRunDetail(payload.data);
+    },
+    [],
+  );
+
+  const loadDocuments = useCallback(async (signal?: AbortSignal) => {
+    setDocumentsLoading(true);
+    try {
+      setDocumentsError("");
+      const response = await fetch("/api/dataset/documents", { signal });
+      if (!response.ok) {
+        throw new Error(`Document request failed with ${response.status}`);
+      }
+
+      const payload = (await response.json()) as {
+        data?: {
+          documents?: DocumentRow[];
+        };
+      };
+      const rows = payload.data?.documents ?? [];
+      setDocuments(rows);
+      setSelectedDocumentId((current) => (rows.some((document) => document.id === current) ? current : rows[0]?.id ?? 0));
+    } finally {
+      if (!signal?.aborted) {
+        setDocumentsLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
 
     async function loadDashboardStats() {
       try {
+        setDashboardLoading(true);
         setDashboardError("");
         const response = await fetch("/api/dashboard/", { signal: controller.signal });
         if (!response.ok) {
@@ -260,12 +865,25 @@ function App() {
           return;
         }
         setDashboardError(error instanceof Error ? error.message : "Unable to load dashboard stats.");
+      } finally {
+        if (!controller.signal.aborted) {
+          setDashboardLoading(false);
+        }
       }
     }
 
     void loadDashboardStats();
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setToast(null), 2800);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -292,24 +910,136 @@ function App() {
   useEffect(() => {
     const controller = new AbortController();
 
+    async function loadCredits() {
+      try {
+        const [balanceResponse, totalCreditsResponse, totalUsageResponse] = await Promise.all([
+          fetch("/api/utils/credits?index=0", { signal: controller.signal }),
+          fetch("/api/utils/credits?index=1", { signal: controller.signal }),
+          fetch("/api/utils/credits?index=2", { signal: controller.signal }),
+        ]);
+
+        if (!balanceResponse.ok || !totalCreditsResponse.ok || !totalUsageResponse.ok) {
+          throw new Error("Credits request failed.");
+        }
+
+        const [balanceText, totalCreditsText, totalUsageText] = await Promise.all([
+          balanceResponse.json(),
+          totalCreditsResponse.json(),
+          totalUsageResponse.json(),
+        ]);
+
+        setCreditsSummary({
+          balance: parseNumericApiValue(balanceText),
+          totalCredits: parseNumericApiValue(totalCreditsText),
+          totalUsage: parseNumericApiValue(totalUsageText),
+        });
+      } catch {
+        if (!controller.signal.aborted) {
+          setCreditsSummary({
+            balance: null,
+            totalCredits: null,
+            totalUsage: null,
+          });
+        }
+      }
+    }
+
+    void loadCredits();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadModels() {
+      try {
+        setModelOptionsLoading(true);
+        const response = await fetch("/api/utils/models?query=&limit=100", {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Model request failed with ${response.status}`);
+        }
+
+        const payload = (await response.json()) as Array<string | { id: string; name?: string }>;
+        const nextOptions = payload
+          .map((entry) =>
+            typeof entry === "string"
+              ? { id: entry, name: entry }
+              : { id: entry.id, name: entry.name ?? entry.id },
+          )
+          .filter((entry) => Boolean(entry.id));
+
+        setModelOptions(nextOptions);
+      } catch {
+        if (!controller.signal.aborted) {
+          setModelOptions([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setModelOptionsLoading(false);
+        }
+      }
+    }
+
+    void loadModels();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      void loadDatasets();
+    }, trimmedSearch ? 180 : 0);
+
     async function loadDatasets() {
       try {
         setDatasetsError("");
-        const response = await fetch("/api/dataset/amount/25", { signal: controller.signal });
+        const params = new URLSearchParams({ limit: "100" });
+        if (trimmedSearch) {
+          params.set("q", trimmedSearch);
+        }
+        if (activeCategory !== "all") {
+          params.set("category", activeCategory);
+        }
+
+        const response = await fetch(`/api/dataset?${params.toString()}`, {
+          signal: controller.signal,
+        });
         if (!response.ok) {
           throw new Error(`Dataset request failed with ${response.status}`);
         }
 
         const payload = (await response.json()) as {
-          datasets?: string[];
+          data?: {
+            datasets?: Array<{
+              id: number;
+              name: string;
+              description: string | null;
+              category: string | null;
+              model: string | null;
+              example_count: number;
+              generation_cost: number;
+              grading_cost: number;
+              total_cost: number;
+            }>;
+          };
         };
-        const rows = (payload.datasets ?? [])
-          .map(parseDatasetPayload)
-          .filter((dataset): dataset is DatasetRow => dataset !== null);
+
+        const rows = (payload.data?.datasets ?? []).map((dataset) => ({
+          id: dataset.id,
+          name: dataset.name,
+          description: dataset.description ?? "",
+          category: dataset.category,
+          model: dataset.model,
+          exampleCount: dataset.example_count,
+          generationCost: dataset.generation_cost,
+          gradingCost: dataset.grading_cost,
+          totalCost: dataset.total_cost,
+        }));
+
         setDatasets(rows);
-        if (rows.length > 0) {
-          setSelectedDatasetId((current) => current || rows[0].id);
-        }
+        setSelectedDatasetId((current) => (rows.some((dataset) => dataset.id === current) ? current : 0));
       } catch (error) {
         if (controller.signal.aborted) {
           return;
@@ -318,56 +1048,341 @@ function App() {
       }
     }
 
-    void loadDatasets();
-    return () => controller.abort();
-  }, []);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [activeCategory, datasetsRefreshKey, trimmedSearch]);
+
+  useEffect(() => {
+    setExamplePreviewOffset(0);
+  }, [selectedDatasetId]);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    async function loadBatchRuns() {
+    async function loadDatasetDetail() {
+      if (!selectedDatasetId) {
+        return;
+      }
       try {
-        setBatchRunsError("");
-        const response = await fetch("/api/dataset/batch", { signal: controller.signal });
+        const params = new URLSearchParams({
+          example_offset: String(examplePreviewOffset),
+          example_limit: "3",
+        });
+        const response = await fetch(`/api/dataset/${selectedDatasetId}?${params.toString()}`, { signal: controller.signal });
         if (!response.ok) {
-          throw new Error(`Batch request failed with ${response.status}`);
+          throw new Error(`Dataset detail request failed with ${response.status}`);
         }
-
         const payload = (await response.json()) as {
           data?: {
-            runs?: BatchRunRow[];
+            dataset?: {
+              id: number;
+              name: string;
+              description: string | null;
+              category: string | null;
+              model: string | null;
+              example_count: number;
+              generation_cost: number;
+              grading_cost: number;
+              total_cost: number;
+              examples_preview?: Array<{
+                id: number | null;
+                instruction: string;
+                response: string;
+              }>;
+              examples_preview_offset?: number;
+              examples_preview_limit?: number;
+            };
           };
         };
-        setBatchRuns(payload.data?.runs ?? []);
+        const dataset = payload.data?.dataset;
+        if (!dataset) {
+          return;
+        }
+        setDatasetDetail({
+          id: dataset.id,
+          name: dataset.name,
+          description: dataset.description ?? "",
+          category: dataset.category,
+          model: dataset.model,
+          exampleCount: dataset.example_count,
+          generationCost: dataset.generation_cost,
+          gradingCost: dataset.grading_cost,
+          totalCost: dataset.total_cost,
+          examplesPreview: dataset.examples_preview ?? [],
+          examplesPreviewOffset: dataset.examples_preview_offset ?? 0,
+          examplesPreviewLimit: dataset.examples_preview_limit ?? 3,
+        });
+      } catch {
+        if (!controller.signal.aborted) {
+          setDatasetDetail(null);
+        }
+      }
+    }
+
+    void loadDatasetDetail();
+    return () => controller.abort();
+  }, [datasetsRefreshKey, examplePreviewOffset, selectedDatasetId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function run() {
+      try {
+        await loadBatchRuns(controller.signal);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setBatchRunsError(error instanceof Error ? error.message : "Unable to load batch runs.");
+        }
+      }
+    }
+
+    void run();
+    return () => controller.abort();
+  }, [batchRunsRefreshKey, loadBatchRuns]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function run() {
+      try {
+        setSelectedBatchRunDetail(null);
+        setBatchRunDetailLoading(Boolean(selectedBatchRunId));
+        await loadBatchRunDetail(selectedBatchRunId, controller.signal);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setSelectedBatchRunDetail(null);
+          setBatchRunDetailError(error instanceof Error ? error.message : "Unable to load batch detail.");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setBatchRunDetailLoading(false);
+        }
+      }
+    }
+
+    setBatchStreamEvents([]);
+    setBatchStreamStatus(selectedBatchRunId ? "connecting" : "idle");
+    void run();
+    return () => controller.abort();
+  }, [loadBatchRunDetail, selectedBatchRunId]);
+
+  useEffect(() => {
+    if (!selectedBatchRunId) {
+      setBatchStreamStatus("idle");
+      return;
+    }
+
+    const source = new EventSource(`/api/dataset/batch/${selectedBatchRunId}/stream`);
+    setBatchStreamStatus("connecting");
+
+    function updateRunRow(runId: string, patch: Partial<BatchRunRow>) {
+      setBatchRuns((current) =>
+        current.map((run) => (run.run_id === runId ? { ...run, ...patch } : run)),
+      );
+    }
+
+    function updateRunDetail(patch: Partial<BatchRunDetail>) {
+      setSelectedBatchRunDetail((current) =>
+        current && current.batch_run_id === selectedBatchRunId ? { ...current, ...patch } : current,
+      );
+    }
+
+    source.addEventListener("batch_snapshot", (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as {
+        run_id: string;
+        status: BatchRunRow["status"];
+        saved: number;
+        failed: number;
+        queued: number;
+        running: number;
+        requested_runs: number;
+      };
+      setBatchStreamStatus("live");
+      updateRunRow(payload.run_id, {
+        status: payload.status,
+        saved: payload.saved,
+        failed: payload.failed,
+        queued: payload.queued,
+        running: payload.running,
+      });
+      updateRunDetail({
+        status: payload.status,
+        requested_runs: payload.requested_runs,
+        saved: payload.saved,
+        failed: payload.failed,
+        queued: payload.queued,
+        running: payload.running,
+      });
+    });
+
+    source.addEventListener("progress", (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as {
+        run_id: string;
+        status: BatchRunRow["status"];
+        saved: number;
+        failed: number;
+        queued: number;
+        running: number;
+        requested_runs: number;
+      };
+      setBatchStreamStatus("live");
+      updateRunRow(payload.run_id, {
+        status: payload.status,
+        saved: payload.saved,
+        failed: payload.failed,
+        queued: payload.queued,
+        running: payload.running,
+      });
+      updateRunDetail({
+        status: payload.status,
+        requested_runs: payload.requested_runs,
+        saved: payload.saved,
+        failed: payload.failed,
+        queued: payload.queued,
+        running: payload.running,
+      });
+    });
+
+    source.addEventListener("dataset_complete", (event) => {
+      const messageEvent = event as MessageEvent;
+      const payload = JSON.parse(messageEvent.data) as {
+        run_id: string;
+        dataset_id: number | null;
+        status: "saved" | "failed";
+        topic: string | null;
+        agent: string | null;
+        score: number | null;
+        cost: number | null;
+        category: string | null;
+        error: string | null;
+      };
+      setBatchStreamStatus("live");
+      setBatchStreamEvents((current) =>
+        [
+          {
+            id: messageEvent.lastEventId || `${payload.run_id}-${payload.status}-${current.length}`,
+            runId: payload.run_id,
+            datasetId: payload.dataset_id,
+            status: payload.status,
+            topic: payload.topic,
+            agent: payload.agent,
+            score: payload.score,
+            cost: payload.cost,
+            category: payload.category,
+            error: payload.error,
+          },
+          ...current.filter((entry) => entry.runId !== payload.run_id).slice(0, 7),
+        ],
+      );
+      setSelectedBatchRunDetail((current) => {
+        if (!current || current.batch_run_id !== selectedBatchRunId) {
+          return current;
+        }
+        const nextResults = current.results.some((result) => result.run_id === payload.run_id)
+          ? current.results.map((result) =>
+              result.run_id === payload.run_id
+                ? {
+                    ...result,
+                    dataset_id: payload.dataset_id,
+                    status: payload.status,
+                    topic: payload.topic,
+                    agent: payload.agent,
+                    error: payload.error,
+                  }
+                : result,
+            )
+          : [
+              {
+                index: current.results.length,
+                run_id: payload.run_id,
+                dataset_id: payload.dataset_id,
+                status: payload.status,
+                topic: payload.topic,
+                agent: payload.agent,
+                error: payload.error,
+              },
+              ...current.results,
+            ];
+        return { ...current, results: nextResults };
+      });
+    });
+
+    source.addEventListener("batch_complete", (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as {
+        run_id: string;
+        status: BatchRunRow["status"];
+        saved: number;
+        failed: number;
+        queued: number;
+        running: number;
+        requested_runs: number;
+      };
+      setBatchStreamStatus("live");
+      updateRunRow(payload.run_id, {
+        status: payload.status,
+        saved: payload.saved,
+        failed: payload.failed,
+        queued: payload.queued,
+        running: payload.running,
+      });
+      updateRunDetail({
+        status: payload.status,
+        requested_runs: payload.requested_runs,
+        saved: payload.saved,
+        failed: payload.failed,
+        queued: payload.queued,
+        running: payload.running,
+      });
+      setBatchRunsRefreshKey((current) => current + 1);
+    });
+
+    source.onerror = () => {
+      setBatchStreamStatus("offline");
+    };
+
+    return () => {
+      source.close();
+    };
+  }, [selectedBatchRunId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadSettings() {
+      try {
+        setSettingsLoading(true);
+        setSettingsError("");
+        const response = await fetch("/api/dashboard/settings", { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Settings request failed with ${response.status}`);
+        }
+        const payload = (await response.json()) as SettingsValues;
+        setSettings(payload);
+        setInitialSettings(payload);
       } catch (error) {
         if (controller.signal.aborted) {
           return;
         }
-        setBatchRunsError(error instanceof Error ? error.message : "Unable to load batch runs.");
+        setSettingsError(error instanceof Error ? error.message : "Unable to load settings.");
+      } finally {
+        if (!controller.signal.aborted) {
+          setSettingsLoading(false);
+        }
       }
     }
 
-    void loadBatchRuns();
+    void loadSettings();
     return () => controller.abort();
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    async function loadDocuments() {
+    async function run() {
       try {
-        setDocumentsError("");
-        const response = await fetch("/api/dataset/documents", { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`Document request failed with ${response.status}`);
-        }
-
-        const payload = (await response.json()) as {
-          data?: {
-            documents?: DocumentRow[];
-          };
-        };
-        setDocuments(payload.data?.documents ?? []);
+        await loadDocuments(controller.signal);
       } catch (error) {
         if (controller.signal.aborted) {
           return;
@@ -376,15 +1391,56 @@ function App() {
       }
     }
 
-    void loadDocuments();
+    void run();
     return () => controller.abort();
-  }, []);
+  }, [documentsRefreshKey, loadDocuments]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function run() {
+      if (!selectedDocumentId) {
+        setSelectedDocumentDetail(null);
+        return;
+      }
+
+      try {
+        setDocumentDetailLoading(true);
+        const response = await fetch(`/api/dataset/documents/${selectedDocumentId}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Document detail request failed with ${response.status}`);
+        }
+        const payload = (await response.json()) as {
+          data?: DocumentDetail;
+        };
+        setSelectedDocumentDetail(payload.data ?? null);
+      } catch {
+        if (!controller.signal.aborted) {
+          setSelectedDocumentDetail(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setDocumentDetailLoading(false);
+        }
+      }
+    }
+
+    void run();
+    return () => controller.abort();
+  }, [selectedDocumentId]);
+
+  useEffect(() => {
+    setDocumentChunksExpanded(false);
+  }, [selectedDocumentId]);
 
   useEffect(() => {
     const controller = new AbortController();
 
     async function loadExports() {
       try {
+        setExportsLoading(true);
         setExportsError("");
         const response = await fetch("/api/dataset/exports/history", { signal: controller.signal });
         if (!response.ok) {
@@ -402,6 +1458,10 @@ function App() {
           return;
         }
         setExportsError(error instanceof Error ? error.message : "Unable to load export history.");
+      } finally {
+        if (!controller.signal.aborted) {
+          setExportsLoading(false);
+        }
       }
     }
 
@@ -425,9 +1485,7 @@ function App() {
 
       const response = await fetch("/api/dataset/batch/generate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: Number(generationForm.amount),
           topics,
@@ -448,20 +1506,12 @@ function App() {
 
       const batchIds = payload.data?.batch_run_ids ?? [];
       setGenerationMessage(
-        batchIds.length > 0
-          ? `Batch queued successfully. Run IDs: ${batchIds.join(", ")}`
-          : payload.message,
+        batchIds.length > 0 ? `Batch queued successfully. Run IDs: ${batchIds.join(", ")}` : payload.message,
       );
-
-      const refreshedRuns = await fetch("/api/dataset/batch");
-      if (refreshedRuns.ok) {
-        const refreshedPayload = (await refreshedRuns.json()) as {
-          data?: {
-            runs?: BatchRunRow[];
-          };
-        };
-        setBatchRuns(refreshedPayload.data?.runs ?? []);
+      if (batchIds[0]) {
+        setSelectedBatchRunId(batchIds[0]);
       }
+      setBatchRunsRefreshKey((current) => current + 1);
     } catch (error) {
       setGenerationMessage(error instanceof Error ? error.message : "Unable to launch batch.");
     } finally {
@@ -469,331 +1519,755 @@ function App() {
     }
   }
 
+  function handleQuickSearchSelect(view: string, targetId?: number, targetRunId?: string) {
+    setActiveView(view);
+    if (view === "datasets" && targetId) {
+      setSelectedDatasetId(targetId);
+    }
+    if (view === "documents" && targetId) {
+      setSelectedDocumentId(targetId);
+    }
+    if (view === "generation" && targetRunId) {
+      setSelectedBatchRunId(targetRunId);
+    }
+    dismissSearch(setSearchQuery);
+  }
+
+  function handleOpenRunFromDashboard(runId: string) {
+    setActiveView("generation");
+    setSelectedBatchRunId(runId);
+  }
+
+  function handleOpenDatasetFromDashboard(datasetId: number) {
+    setActiveView("datasets");
+    setSelectedDatasetId(datasetId);
+  }
+
+  function handleOpenDocumentFromDashboard(documentId: number) {
+    setActiveView("documents");
+    setSelectedDocumentId(documentId);
+  }
+
+  function handleOpenExportsFromDashboard() {
+    setActiveView("exports");
+  }
+
+  function handleSearchDatasetAction(action: "view" | "export" | "delete", datasetId: number) {
+    setActiveView("datasets");
+    setSelectedDatasetId(datasetId);
+    dismissSearch(setSearchQuery);
+
+    if (action === "view") {
+      setIsDatasetViewOpen(true);
+      return;
+    }
+
+    if (action === "export") {
+      window.open(`/api/dataset/${datasetId}/export`, "_blank", "noopener,noreferrer");
+      setToast({ tone: "success", message: "Export opened in a new tab." });
+      return;
+    }
+
+    setIsDeleteConfirmOpen(true);
+  }
+
+  function handleRefreshDatasets() {
+    setDatasetsRefreshKey((current) => current + 1);
+    setToast({ tone: "success", message: "Refreshing dataset library." });
+  }
+
+  function handleRefreshBatchRuns() {
+    setBatchRunsRefreshKey((current) => current + 1);
+    setToast({ tone: "success", message: "Refreshing batch monitor." });
+  }
+
+  function handleRefreshDocuments() {
+    setDocumentsRefreshKey((current) => current + 1);
+    setToast({ tone: "success", message: "Refreshing document library." });
+  }
+
+  async function handleUploadDocument() {
+    if (!documentUploadFile) {
+      return;
+    }
+
+    try {
+      setDocumentUploadPending(true);
+      setDocumentUploadMessage("");
+      const formData = new FormData();
+      formData.append("file", documentUploadFile);
+      formData.append("intake_mode", documentUploadMode);
+      formData.append("chunk_char_size", documentUploadChunkSize || "2000");
+      formData.append("chunk_overlap", documentUploadChunkOverlap || "200");
+
+      const response = await fetch("/api/dataset/intake/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: {
+          document_id?: number;
+          dataset_id?: number;
+        };
+      };
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || `Upload failed with ${response.status}`);
+      }
+
+      setDocumentUploadMessage(payload.message || "Upload completed.");
+      setDocumentUploadFile(null);
+      setDocumentUploadAdvancedOpen(false);
+      setDocumentChunksExpanded(false);
+      setDocumentsRefreshKey((current) => current + 1);
+      if (documentUploadMode !== "examples" && payload.data?.document_id) {
+        setSelectedDocumentId(payload.data.document_id);
+      }
+      if (documentUploadMode === "examples" && payload.data?.dataset_id) {
+        setDocumentUploadMessage(
+          `${payload.message || "Upload completed."} Dataset ID ${payload.data.dataset_id} was created.`,
+        );
+      }
+      setToast({ tone: "success", message: payload.message || "Document uploaded." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to upload file.";
+      setDocumentUploadMessage(message);
+      setToast({ tone: "error", message });
+    } finally {
+      setDocumentUploadPending(false);
+    }
+  }
+
+  async function handleScraperImport() {
+    if (!scraperText.trim()) {
+      return;
+    }
+
+    try {
+      setScraperPending(true);
+      setScraperMessage("");
+      const response = await fetch("/api/dataset/intake/scraper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataset_name: scraperDatasetName || undefined,
+          records: [{ text: scraperText }],
+        }),
+      });
+      const payload = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: {
+          dataset_id?: number;
+        };
+      };
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || `Scraper intake failed with ${response.status}`);
+      }
+
+      setScraperMessage(payload.message || "Text imported.");
+      if (payload.data?.dataset_id) {
+        setScraperMessage(`${payload.message || "Text imported."} Dataset ID ${payload.data.dataset_id} was created.`);
+      }
+      setScraperText("");
+      setScraperDatasetName("");
+      setDocumentChunksExpanded(false);
+      setDatasetsRefreshKey((current) => current + 1);
+      setToast({ tone: "success", message: payload.message || "Scraper text imported." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to import scraper text.";
+      setScraperMessage(message);
+      setToast({ tone: "error", message });
+    } finally {
+      setScraperPending(false);
+    }
+  }
+
+  function handleExampleShift(step: number) {
+    if (!selectedDataset) {
+      return;
+    }
+    const limit = datasetDetail?.examplesPreviewLimit ?? 3;
+    const maxOffset = Math.max(0, selectedDataset.exampleCount - limit);
+    setExamplePreviewOffset((current) => {
+      const baseOffset = datasetDetail?.examplesPreviewOffset ?? current;
+      return Math.min(maxOffset, Math.max(0, baseOffset + step));
+    });
+  }
+
+  function handleExportDataset() {
+    if (!selectedDataset) {
+      return;
+    }
+    window.open(`/api/dataset/${selectedDataset.id}/export`, "_blank", "noopener,noreferrer");
+    setToast({ tone: "success", message: "Export opened in a new tab." });
+  }
+
+  async function handleDeleteDataset() {
+    if (!selectedDataset) {
+      return;
+    }
+    try {
+      setDatasetDeletePending(true);
+      const response = await fetch(`/api/dataset/remove/${selectedDataset.id}`, { method: "DELETE" });
+      const payload = (await response.json()) as { message?: string; success?: boolean };
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || `Delete request failed with ${response.status}`);
+      }
+
+      const currentIndex = datasets.findIndex((dataset) => dataset.id === selectedDataset.id);
+      const nextDataset =
+        datasets[currentIndex + 1] ?? datasets[currentIndex - 1] ?? null;
+
+      setDatasets((current) => current.filter((dataset) => dataset.id !== selectedDataset.id));
+      setDatasetDetail(null);
+      setSelectedDatasetId(nextDataset?.id ?? 0);
+      setIsDatasetViewOpen(false);
+      setIsDeleteConfirmOpen(false);
+      setToast({ tone: "success", message: payload.message || "Dataset deleted." });
+    } catch (error) {
+      setToast({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to delete dataset.",
+      });
+    } finally {
+      setDatasetDeletePending(false);
+    }
+  }
+
+  async function handleCopyDatasetId() {
+    if (!selectedDataset) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(String(selectedDataset.id));
+      setToast({ tone: "success", message: `Copied dataset ID ${selectedDataset.id}.` });
+    } catch {
+      setToast({ tone: "error", message: "Unable to copy dataset ID." });
+    }
+  }
+
+  async function handleCopyDocumentRef() {
+    if (!selectedDocument) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(selectedDocument.source_material_ref);
+      setToast({ tone: "success", message: `Copied ${selectedDocument.source_material_ref}.` });
+    } catch {
+      setToast({ tone: "error", message: "Unable to copy source reference." });
+    }
+  }
+
+  async function handleCopyChunkContent(content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      setToast({ tone: "success", message: "Chunk copied to clipboard." });
+    } catch {
+      setToast({ tone: "error", message: "Unable to copy chunk content." });
+    }
+  }
+
+  function handleSettingsFieldChange(field: keyof SettingsValues, value: string) {
+    setSettings((current) => {
+      if (!current) {
+        return current;
+      }
+      const numericFields = new Set<keyof SettingsValues>([
+        "threshold",
+        "min_grading_score",
+        "min_response_char_length",
+        "max_grading_json_retries",
+        "max_naming_json_retries",
+        "max_low_quality_retries",
+        "max_generation_retries",
+        "min_save_ratio",
+      ]);
+      return {
+        ...current,
+        [field]: numericFields.has(field) ? Number(value) : value,
+      };
+    });
+  }
+
+  function handleOpenModelPicker(target: Exclude<ModelPickerTarget, null>) {
+    setModelPickerTarget(target);
+    setModelPickerQuery("");
+  }
+
+  function handleCloseModelPicker() {
+    setModelPickerTarget(null);
+    setModelPickerQuery("");
+  }
+
+  function handleSelectModel(modelId: string) {
+    if (modelPickerTarget === "generation") {
+      setGenerationForm((current) => ({ ...current, model: modelId }));
+    } else if (modelPickerTarget) {
+      handleSettingsFieldChange(modelPickerTarget, modelId);
+    }
+    handleCloseModelPicker();
+  }
+
+  function handleResetSettings() {
+    if (!initialSettings) {
+      return;
+    }
+    setSettings(initialSettings);
+    setSettingsError("");
+    setSettingsMessage("Reverted local edits to the last saved settings.");
+  }
+
+  async function handleSaveSettings() {
+    if (!settings) {
+      return;
+    }
+    if (settingsValidationError) {
+      setSettingsError(settingsValidationError);
+      return;
+    }
+    try {
+      setSettingsSaving(true);
+      setSettingsError("");
+      setSettingsMessage("");
+      const response = await fetch("/api/dashboard/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      if (!response.ok) {
+        throw new Error(`Settings update failed with ${response.status}`);
+      }
+      const payload = (await response.json()) as SettingsValues;
+      setSettings(payload);
+      setInitialSettings(payload);
+      setSettingsMessage("Settings saved.");
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : "Unable to save settings.");
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function handleBatchAction(action: "pause" | "resume" | "stop" | "restart-failed") {
+    if (!selectedBatchRunId) {
+      return;
+    }
+
+    try {
+      setBatchActionPending(action);
+      const response = await fetch(`/api/dataset/batch/${selectedBatchRunId}/${action}`, {
+        method: "POST",
+      });
+      const payload = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: BatchRunDetail | { current_summary?: BatchRunDetail };
+      };
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || `Batch action failed with ${response.status}`);
+      }
+
+      const nextDetail =
+        payload.data && "current_summary" in payload.data
+          ? payload.data.current_summary ?? null
+          : (payload.data as BatchRunDetail | undefined) ?? null;
+      if (nextDetail) {
+        setSelectedBatchRunDetail(nextDetail);
+      }
+      setBatchRunsRefreshKey((current) => current + 1);
+      setToast({ tone: "success", message: payload.message || "Batch action completed." });
+    } catch (error) {
+      setToast({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to update batch state.",
+      });
+    } finally {
+      setBatchActionPending("");
+    }
+  }
+
+  async function handleDeleteDocument() {
+    if (!selectedDocument) {
+      return;
+    }
+
+    try {
+      setDocumentActionPending(true);
+      const response = await fetch(`/api/dataset/documents/${selectedDocument.id}`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as { success?: boolean; message?: string };
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || `Document delete failed with ${response.status}`);
+      }
+
+      const currentIndex = documents.findIndex((document) => document.id === selectedDocument.id);
+      const nextDocument = documents[currentIndex + 1] ?? documents[currentIndex - 1] ?? null;
+
+      setDocuments((current) => current.filter((document) => document.id !== selectedDocument.id));
+      setSelectedDocumentId(nextDocument?.id ?? 0);
+      setSelectedDocumentDetail(null);
+      setIsDocumentViewOpen(false);
+      setIsDocumentDeleteConfirmOpen(false);
+      setToast({ tone: "success", message: payload.message || "Document deleted." });
+    } catch (error) {
+      setToast({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to delete document.",
+      });
+    } finally {
+      setDocumentActionPending(false);
+    }
+  }
+
+  function handleExportFieldChange(
+    field: "datasetIds" | "format" | "minScore" | "maxExamples" | "trainValSplit" | "dedupePass" | "shuffle",
+    value: string | boolean,
+  ) {
+    setExportForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function handleToggleExportDataset(datasetId: number) {
+    setExportForm((current) => {
+      const parsedIds = current.datasetIds
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+
+      const nextIds = parsedIds.includes(datasetId)
+        ? parsedIds.filter((value) => value !== datasetId)
+        : [...parsedIds, datasetId];
+
+      return {
+        ...current,
+        datasetIds: nextIds.join(", "),
+      };
+    });
+  }
+
+  function handleClearExportDatasets() {
+    setExportForm((current) => ({
+      ...current,
+      datasetIds: "",
+    }));
+  }
+
+  function handleDownloadExport(exportId: number) {
+    window.open(`/api/dataset/exports/${exportId}/download`, "_blank", "noopener,noreferrer");
+    setToast({ tone: "success", message: "Export download opened." });
+  }
+
+  async function handleRerunExport(exportId: number) {
+    try {
+      setExportActionPendingId(exportId);
+      const response = await fetch(`/api/dataset/exports/${exportId}/rerun`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(payload?.message || `Export rerun failed with ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+
+      setToast({ tone: "success", message: "Export rerun completed and opened." });
+
+      const refreshedExports = await fetch("/api/dataset/exports/history");
+      if (refreshedExports.ok) {
+        const refreshedPayload = (await refreshedExports.json()) as {
+          data?: {
+            exports?: ExportRow[];
+          };
+        };
+        setExportsHistory(refreshedPayload.data?.exports ?? []);
+      }
+    } catch (error) {
+      setToast({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to rerun export.",
+      });
+    } finally {
+      setExportActionPendingId(null);
+    }
+  }
+
+  async function handleCreateExport() {
+    try {
+      setExportCreatePending(true);
+      setExportMessage("");
+      const datasetIds = exportForm.datasetIds
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+
+      if (datasetIds.length === 0) {
+        throw new Error("Enter at least one dataset ID to export.");
+      }
+
+      const response = await fetch("/api/dataset/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataset_ids: datasetIds,
+          export_format: exportForm.format,
+          min_score: exportForm.minScore ? Number(exportForm.minScore) : null,
+          max_examples: exportForm.maxExamples ? Number(exportForm.maxExamples) : null,
+          train_val_split: exportForm.trainValSplit ? Number(exportForm.trainValSplit) : null,
+          dedupe_pass: exportForm.dedupePass,
+          shuffle: exportForm.shuffle,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(payload?.message || `Export creation failed with ${response.status}`);
+      }
+
+      const historyId = response.headers.get("X-Export-History-Id");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+
+      setExportMessage(historyId ? `Export created. History ID ${historyId}.` : "Export created.");
+      setExportForm(defaultExportForm);
+      setToast({ tone: "success", message: "Export created and opened." });
+
+      const refreshedExports = await fetch("/api/dataset/exports/history");
+      if (refreshedExports.ok) {
+        const refreshedPayload = (await refreshedExports.json()) as {
+          data?: {
+            exports?: ExportRow[];
+          };
+        };
+        setExportsHistory(refreshedPayload.data?.exports ?? []);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to create export.";
+      setExportMessage(message);
+      setToast({ tone: "error", message });
+    } finally {
+      setExportCreatePending(false);
+    }
+  }
+
   return (
-    <main className="dashboard-shell">
-      <div className="dashboard-noise" aria-hidden="true" />
-
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <p className="sidebar-kicker">PData</p>
-          <strong className="sidebar-title">Control Room</strong>
+    <AppShell
+      activeView={activeView}
+      description={currentView.description}
+      eyebrow={currentView.eyebrow}
+      healthState={healthState}
+      navItems={navItems.map(({ id, label }) => ({ id, label }))}
+      onNavigate={setActiveView}
+      onNewBatch={() => setActiveView("generation")}
+      onSearchChange={setSearchQuery}
+      searchPanel={
+        <SearchResults
+          onDatasetAction={handleSearchDatasetAction}
+          onSelect={handleQuickSearchSelect}
+          sections={quickSearchSections}
+          trimmedSearch={trimmedSearch}
+        />
+      }
+      searchQuery={searchQuery}
+      title={currentView.title}
+    >
+      {activeView === "dashboard" ? (
+        <DashboardView
+          attentionItems={dashboardAttentionItems}
+          cards={statCards}
+          error={dashboardError}
+          loading={dashboardLoading}
+          onOpenDataset={handleOpenDatasetFromDashboard}
+          onOpenDocument={handleOpenDocumentFromDashboard}
+          onOpenExports={handleOpenExportsFromDashboard}
+          onOpenRun={handleOpenRunFromDashboard}
+          recentDatasets={dashboardRecentDatasets}
+          recentDocuments={dashboardRecentDocuments}
+          recentExports={dashboardRecentExports}
+          recentRuns={dashboardRecentRuns}
+        />
+      ) : null}
+      {activeView === "datasets" ? (
+        <DatasetsView
+          activeCategory={activeCategory}
+          categories={datasetCategories}
+          deletePending={datasetDeletePending}
+          datasets={datasets}
+          datasetsError={datasetsError}
+          onCategoryChange={setActiveCategory}
+          onCloseView={() => setIsDatasetViewOpen(false)}
+          onCloseDeleteConfirm={() => setIsDeleteConfirmOpen(false)}
+          onCopyId={() => void handleCopyDatasetId()}
+          onDelete={() => void handleDeleteDataset()}
+          onExampleShift={handleExampleShift}
+          onExport={handleExportDataset}
+          onOpenDeleteConfirm={() => setIsDeleteConfirmOpen(true)}
+          onRefresh={handleRefreshDatasets}
+          onSelectDataset={setSelectedDatasetId}
+          onView={() => setIsDatasetViewOpen(true)}
+          isDeleteConfirmOpen={isDeleteConfirmOpen}
+          isViewOpen={isDatasetViewOpen}
+          selectedDataset={selectedDataset}
+          trimmedSearch={trimmedSearch}
+        />
+      ) : null}
+      {activeView === "generation" ? (
+        <GenerationView
+          actionPending={batchActionPending}
+          detailLoading={batchRunDetailLoading}
+          detailError={batchRunDetailError}
+          form={generationForm}
+          message={generationMessage}
+          modelLoading={modelOptionsLoading}
+          modelOptions={modelOptions}
+          onBatchAction={(action) => void handleBatchAction(action)}
+          onFormChange={(updater) => setGenerationForm((current) => updater(current))}
+          onOpenDataset={handleOpenDatasetFromDashboard}
+          onOpenModelPicker={() => handleOpenModelPicker("generation")}
+          onRefreshRuns={handleRefreshBatchRuns}
+          onReset={() => setGenerationForm(defaultGenerationForm)}
+          onSelectRun={setSelectedBatchRunId}
+          onSubmit={() => void handleBatchLaunch()}
+          runs={batchRuns}
+          runsError={batchRunsError}
+          selectedRunDetail={selectedBatchRunDetail}
+          selectedRunId={selectedBatchRunId}
+          streamEvents={batchStreamEvents}
+          streamStatus={batchStreamStatus}
+          submitting={generationSubmitting}
+        />
+      ) : null}
+      {activeView === "documents" ? (
+        <DocumentsView
+          documentActionPending={documentActionPending}
+          documentChunksExpanded={documentChunksExpanded}
+          uploadAdvancedOpen={documentUploadAdvancedOpen}
+          uploadChunkOverlap={documentUploadChunkOverlap}
+          uploadChunkSize={documentUploadChunkSize}
+          documentDetailLoading={documentDetailLoading}
+          documentFilter={documentFilter}
+          documents={filteredDocuments}
+          documentsError={documentsError}
+          documentsLoading={documentsLoading}
+          isDocumentDeleteConfirmOpen={isDocumentDeleteConfirmOpen}
+          isDocumentViewOpen={isDocumentViewOpen}
+          onCloseDeleteConfirm={() => setIsDocumentDeleteConfirmOpen(false)}
+          onCloseView={() => setIsDocumentViewOpen(false)}
+          onCopyChunkContent={(content) => void handleCopyChunkContent(content)}
+          onCopyRef={() => void handleCopyDocumentRef()}
+          onDelete={() => void handleDeleteDocument()}
+          onDocumentFilterChange={setDocumentFilter}
+          onOpenDeleteConfirm={() => setIsDocumentDeleteConfirmOpen(true)}
+          onRefresh={handleRefreshDocuments}
+          onScraperDatasetNameChange={setScraperDatasetName}
+          onScraperSubmit={() => void handleScraperImport()}
+          onScraperTextChange={setScraperText}
+          onSelectDocument={setSelectedDocumentId}
+          onUploadAdvancedToggle={() => setDocumentUploadAdvancedOpen((current) => !current)}
+          onUploadChunkOverlapChange={setDocumentUploadChunkOverlap}
+          onUploadChunkSizeChange={setDocumentUploadChunkSize}
+          onUploadFileChange={setDocumentUploadFile}
+          onUploadModeChange={setDocumentUploadMode}
+          onUploadSubmit={() => void handleUploadDocument()}
+          onToggleChunkExpansion={() => setDocumentChunksExpanded((current) => !current)}
+          onView={() => setIsDocumentViewOpen(true)}
+          scraperDatasetName={scraperDatasetName}
+          scraperMessage={scraperMessage}
+          scraperPending={scraperPending}
+          scraperText={scraperText}
+          selectedDocumentDetail={selectedDocumentDetail}
+          selectedDocumentId={selectedDocumentId}
+          uploadFileName={documentUploadFile?.name ?? ""}
+          uploadMessage={documentUploadMessage}
+          uploadMode={documentUploadMode}
+          uploadPending={documentUploadPending}
+        />
+      ) : null}
+      {activeView === "exports" ? (
+        <ExportsView
+          availableDatasets={exportPickerDatasets.map((dataset) => ({ id: dataset.id, name: dataset.name }))}
+          exportCreatePending={exportCreatePending}
+          exportActionPendingId={exportActionPendingId}
+          exportDatasetIds={exportForm.datasetIds}
+          exportsError={exportsError}
+          exportsHistory={exportsHistory}
+          exportsLoading={exportsLoading}
+          exportFormat={exportForm.format}
+          exportMaxExamples={exportForm.maxExamples}
+          exportMessage={exportMessage}
+          exportMinScore={exportForm.minScore}
+          exportTrainValSplit={exportForm.trainValSplit}
+          exportDedupePass={exportForm.dedupePass}
+          exportShuffle={exportForm.shuffle}
+          exportPickerQuery={exportPickerQuery}
+          formatDate={formatDate}
+          isExportPickerOpen={isExportPickerOpen}
+          onExportFieldChange={handleExportFieldChange}
+          onExportPickerQueryChange={setExportPickerQuery}
+          onOpenExportPicker={() => setIsExportPickerOpen(true)}
+          onCloseExportPicker={() => setIsExportPickerOpen(false)}
+          onExportSubmit={() => void handleCreateExport()}
+          onToggleExportDataset={handleToggleExportDataset}
+          onClearExportDatasets={handleClearExportDatasets}
+          onDownload={handleDownloadExport}
+          onRerun={(exportId) => void handleRerunExport(exportId)}
+          selectedExportDatasetIds={selectedExportDatasetIds}
+        />
+      ) : null}
+      {activeView === "settings" ? (
+        <SettingsView
+          error={settingsError}
+          initialSettings={initialSettings}
+          loading={settingsLoading}
+          message={settingsMessage}
+          onFieldChange={handleSettingsFieldChange}
+          onOpenModelPicker={handleOpenModelPicker}
+          onReset={handleResetSettings}
+          onSave={() => void handleSaveSettings()}
+          saving={settingsSaving}
+          settings={settings}
+          validationError={settingsValidationError}
+        />
+      ) : null}
+      <ModelPickerModal
+        isOpen={modelPickerTarget !== null}
+        onClose={handleCloseModelPicker}
+        onQueryChange={setModelPickerQuery}
+        onSelect={handleSelectModel}
+        options={filteredModelOptions}
+        query={modelPickerQuery}
+        targetLabel={
+          modelPickerTarget === "generation"
+            ? "generation"
+            : modelPickerTarget === "default_model"
+              ? "default model"
+              : modelPickerTarget === "grading_model"
+                ? "grading model"
+                : modelPickerTarget === "naming_model"
+                  ? "naming model"
+                  : "model selection"
+        }
+      />
+      {toast ? (
+        <div className={`toast toast-${toast.tone}`} aria-live="polite" role="status">
+          {toast.message}
         </div>
-
-        <nav className="sidebar-nav" aria-label="Primary navigation">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              className={item.id === activeView ? "sidebar-link sidebar-link-active" : "sidebar-link"}
-              onClick={() => setActiveView(item.id)}
-              type="button"
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      <section className="dashboard-main">
-        <header className="topbar">
-          <label className="topbar-search" aria-label="Search">
-            <span className="topbar-search-label">Quick Search</span>
-            <input placeholder="Search datasets, runs, documents" type="text" />
-          </label>
-
-          <div className="topbar-actions">
-            <button className="topbar-button" onClick={() => setActiveView("generation")} type="button">
-              <span className="topbar-button-mark" aria-hidden="true">
-                +
-              </span>
-              <span>New Batch</span>
-            </button>
-          </div>
-        </header>
-
-        <header className="dashboard-header">
-          <div>
-            <p className="dashboard-kicker">{currentView.eyebrow}</p>
-            <h1 className="dashboard-title">{currentView.title}</h1>
-            <p className="dashboard-copy">{currentView.description}</p>
-          </div>
-
-          <div
-            className={
-              healthState === "healthy"
-                ? "dashboard-badge dashboard-badge-healthy"
-                : healthState === "offline"
-                  ? "dashboard-badge dashboard-badge-offline"
-                  : "dashboard-badge dashboard-badge-checking"
-            }
-          >
-            <span className="status-dot" aria-hidden="true" />
-            {healthState === "healthy"
-              ? "API Healthy"
-              : healthState === "offline"
-                ? "API Offline"
-                : "Checking API"}
-          </div>
-        </header>
-
-        {activeView === "dashboard" ? (
-          <section className="dashboard-grid" aria-label="Dashboard cards">
-            {statCards.map((card, index) => (
-              <article key={`${card.eyebrow}-${index}`} className="dashboard-card">
-                <p className="card-eyebrow">{card.eyebrow}</p>
-                <h2 className="card-title">{card.title}</h2>
-                <p className="card-body">{card.body}</p>
-              </article>
-            ))}
-          </section>
-        ) : null}
-
-        {activeView === "datasets" ? (
-          <section className="datasets-layout" aria-label="Dataset library">
-            <div className="datasets-panel">
-              <div className="datasets-toolbar">
-                <p className="datasets-count">
-                  {datasetsError ? datasetsError : `${datasets.length} datasets loaded from the current API`}
-                </p>
-              </div>
-
-              <div className="dataset-list">
-                {datasets.map((dataset) => (
-                  <button
-                    key={dataset.id}
-                    className={dataset.id === selectedDataset?.id ? "dataset-row dataset-row-active" : "dataset-row"}
-                    onClick={() => setSelectedDatasetId(dataset.id)}
-                    type="button"
-                  >
-                    <div className="dataset-row-main">
-                      <p className="dataset-row-name">{dataset.name}</p>
-                      <p className="dataset-row-meta">
-                        {dataset.category ?? "uncategorized"} - {dataset.model ?? "unknown model"}
-                      </p>
-                    </div>
-                    <div className="dataset-row-side">
-                      <span className="status-tag status-tag-ready">loaded</span>
-                      <span className="dataset-row-updated">${dataset.totalCost.toFixed(2)} total cost</span>
-                    </div>
-                  </button>
-                ))}
-                {datasets.length === 0 && !datasetsError ? (
-                  <div className="empty-state">No datasets were returned from the current endpoint.</div>
-                ) : null}
-              </div>
-            </div>
-
-            <aside className="dataset-detail">
-              <p className="card-eyebrow">Selected dataset</p>
-              <h2 className="placeholder-title">{selectedDataset?.name ?? "No dataset selected"}</h2>
-
-              <dl className="detail-grid">
-                <div>
-                  <dt>Category</dt>
-                  <dd>{selectedDataset?.category ?? "-"}</dd>
-                </div>
-                <div>
-                  <dt>Model</dt>
-                  <dd>{selectedDataset?.model ?? "-"}</dd>
-                </div>
-                <div>
-                  <dt>Generation Cost</dt>
-                  <dd>${selectedDataset?.generationCost.toFixed(2) ?? "0.00"}</dd>
-                </div>
-                <div>
-                  <dt>Grading Cost</dt>
-                  <dd>${selectedDataset?.gradingCost.toFixed(2) ?? "0.00"}</dd>
-                </div>
-              </dl>
-
-              <p className="card-body">{selectedDataset?.description || "No description returned for this dataset."}</p>
-            </aside>
-          </section>
-        ) : null}
-
-        {activeView === "generation" ? (
-          <section className="generation-layout" aria-label="Generation workspace">
-            <form
-              className="generation-form-panel"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleBatchLaunch();
-              }}
-            >
-              <div className="panel-heading">
-                <p className="card-eyebrow">Batch setup</p>
-                <h2 className="placeholder-title">Start a generation run</h2>
-              </div>
-
-              <div className="form-grid">
-                <label className="field">
-                  <span className="field-label">Topics</span>
-                  <textarea
-                    onChange={(event) => setGenerationForm((current) => ({ ...current, topics: event.target.value }))}
-                    rows={4}
-                    value={generationForm.topics}
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field-label">Agent Types</span>
-                  <input
-                    onChange={(event) =>
-                      setGenerationForm((current) => ({ ...current, agentTypes: event.target.value }))
-                    }
-                    type="text"
-                    value={generationForm.agentTypes}
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field-label">Amount</span>
-                  <input
-                    onChange={(event) => setGenerationForm((current) => ({ ...current, amount: event.target.value }))}
-                    type="number"
-                    value={generationForm.amount}
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field-label">Examples per Dataset</span>
-                  <input
-                    onChange={(event) => setGenerationForm((current) => ({ ...current, exAmt: event.target.value }))}
-                    type="number"
-                    value={generationForm.exAmt}
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field-label">Model</span>
-                  <input
-                    onChange={(event) => setGenerationForm((current) => ({ ...current, model: event.target.value }))}
-                    type="text"
-                    value={generationForm.model}
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field-label">Max Concurrency</span>
-                  <input
-                    onChange={(event) =>
-                      setGenerationForm((current) => ({ ...current, maxConcurrency: event.target.value }))
-                    }
-                    type="number"
-                    value={generationForm.maxConcurrency}
-                  />
-                </label>
-              </div>
-
-              <div className="generation-actions">
-                <button className="topbar-button" disabled={generationSubmitting} type="submit">
-                  <span className="topbar-button-mark" aria-hidden="true">
-                    +
-                  </span>
-                  <span>{generationSubmitting ? "Launching..." : "Launch Batch"}</span>
-                </button>
-                <button
-                  className="ghost-button"
-                  onClick={() => setGenerationForm(defaultGenerationForm)}
-                  type="button"
-                >
-                  Reset
-                </button>
-              </div>
-
-              {generationMessage ? <p className="inline-message">{generationMessage}</p> : null}
-            </form>
-
-            <aside className="generation-side-panel">
-              <div className="panel-heading">
-                <p className="card-eyebrow">Recent runs</p>
-                <h2 className="placeholder-title">Run monitor</h2>
-              </div>
-
-              <div className="run-list">
-                {batchRuns.map((run) => (
-                  <article key={run.run_id} className="run-card">
-                    <div className="run-card-header">
-                      <div>
-                        <p className="run-id">{run.run_id}</p>
-                        <h3 className="run-topic">{run.topic || "Untitled batch run"}</h3>
-                      </div>
-                      <span className={`status-tag status-tag-${run.status}`}>{run.status}</span>
-                    </div>
-
-                    <p className="run-meta">{run.requested_agent || "mixed agents"}</p>
-                    <p className="card-body">
-                      {run.saved} saved · {run.failed} failed · {run.running} running · {run.queued} queued
-                    </p>
-                  </article>
-                ))}
-                {batchRuns.length === 0 ? (
-                  <div className="empty-state">{batchRunsError || "No batch runs have been recorded yet."}</div>
-                ) : null}
-              </div>
-            </aside>
-          </section>
-        ) : null}
-
-        {activeView === "documents" ? (
-          <section className="placeholder-panel" aria-label="Documents">
-            <p className="card-eyebrow">Documents</p>
-            <h2 className="placeholder-title">Source material library</h2>
-            <div className="document-list">
-              {documents.map((document) => (
-                <article key={document.id} className="document-card">
-                  <div>
-                    <p className="dataset-row-name">{document.name}</p>
-                    <p className="dataset-row-meta">
-                      {document.file_type} - {document.chunk_count} chunks - {document.char_count.toLocaleString()} chars
-                    </p>
-                  </div>
-                  <p className="dataset-row-updated">{document.source_material_ref}</p>
-                </article>
-              ))}
-              {documents.length === 0 ? (
-                <div className="empty-state">{documentsError || "No source documents are stored yet."}</div>
-              ) : null}
-            </div>
-          </section>
-        ) : null}
-
-        {activeView === "exports" ? (
-          <section className="placeholder-panel" aria-label="Exports">
-            <p className="card-eyebrow">Exports</p>
-            <h2 className="placeholder-title">Export history</h2>
-            <div className="document-list">
-              {exportsHistory.map((exportRow) => (
-                <article key={exportRow.id} className="document-card">
-                  <div>
-                    <p className="dataset-row-name">{exportRow.output_filename || `export-${exportRow.id}`}</p>
-                    <p className="dataset-row-meta">
-                      {exportRow.export_format} - {exportRow.total_examples} examples - {exportRow.dataset_ids.length} datasets
-                    </p>
-                  </div>
-                  <p className="dataset-row-updated">
-                    {exportRow.has_artifact ? "artifact ready" : "no artifact"} · {formatDate(exportRow.created_at)}
-                  </p>
-                </article>
-              ))}
-              {exportsHistory.length === 0 ? (
-                <div className="empty-state">{exportsError || "No export history records are available yet."}</div>
-              ) : null}
-            </div>
-          </section>
-        ) : null}
-
-        {activeView === "settings" ? (
-          <section className="placeholder-panel" aria-label="Settings">
-            <p className="card-eyebrow">Settings</p>
-            <h2 className="placeholder-title">Backend settings endpoint needed</h2>
-            <p className="card-body">
-              This screen is the one remaining gap. There is no existing API surface for writable settings or
-              environment-backed preferences, so this page should stay a placeholder until that endpoint exists.
-            </p>
-          </section>
-        ) : null}
-      </section>
-    </main>
+      ) : null}
+    </AppShell>
   );
 }
 

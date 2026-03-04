@@ -21,12 +21,12 @@ def response_builder(
     count: int | None = None,
     errors: int | None = None,
     statusCode: int = 200,
-    data: dict | None = None
+    data: object | None = None
 ):
     status = statusCode
     if not (valid_http(statusCode)):
         status = 500
-
+    
     return JSONResponse(
         {"success": success, "message": message, "amount": count, "errors": errors, "data": data},
         status_code=status,

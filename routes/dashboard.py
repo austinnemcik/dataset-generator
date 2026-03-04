@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, Query, Request
-import asyncio
+from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
-from app.core.database import get_session, Dataset, TrainingExample
+from app.core.database import get_session, Dataset, TrainingExample, ClientSettings
 from sqlalchemy import func
 import json
 from pathlib import Path
 from app.core.utils import get_path_value
-from app.core.config import get_settings
+from agent.settings import get_client_settings, ClientSettingsUpdate, ClientSettingsRead, _update_client_settings
+from app.core.generics import response_builder
+
 dashboard_router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
@@ -48,7 +49,22 @@ def get_dashboard(session: Session = Depends(get_session)):
     print(payload)
     return payload
 
-@dashboard_router.get("settings")
-def return_settings():
-    return get_settings()
+@dashboard_router.get("/settings")
+def return_client_settings():
+    return get_client_settings()
+
+@dashboard_router.patch("/settings", response_model=ClientSettingsRead)
+def update_client_settings(
+    payload: ClientSettingsUpdate,
+    session: Session = Depends(get_session),
+    ):
+        try: 
+            safe_settings, settings = _update_client_settings(payload=payload, session=session)
+            return safe_settings
+        except ValueError as e:
+            return response_builder(success=False, message=f"Error updating settings value. {e}")
+    
+    
+    
+        
 

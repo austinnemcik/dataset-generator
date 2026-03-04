@@ -50,4 +50,3 @@ def get_database_url() -> str:
     if not database_url or not str(database_url).strip():
         raise RuntimeError("Missing required environment variable: DATABASE_URL")
     return database_url
-

@@ -1,7 +1,7 @@
 from pathlib import Path
 import sys
 from contextlib import asynccontextmanager
-
+from routes.utils import utils_router
 from fastapi import FastAPI
 
 # Support direct execution via `python app/main.py` by ensuring the project
@@ -12,16 +12,18 @@ if __package__ in (None, ""):
         sys.path.insert(0, str(project_root))
 
 from agent.automation import resume_incomplete_batch_runs
-from agent.settings import load_pricing
+from agent.settings import load_models
 from app.core.database import init_db
 from routes.dataset import data_router
 from routes.dashboard import dashboard_router
+from agent.settings import load_client_settings_on_startup
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    load_pricing()
+    load_models()
+    load_client_settings_on_startup()
     await resume_incomplete_batch_runs()
     yield
 
@@ -29,6 +31,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(data_router)
 app.include_router(dashboard_router)
+app.include_router(utils_router)
 
 
 @app.get('/')
