@@ -19,6 +19,7 @@ async def save_responses(
     amount: int,
     agent_type: AgentType,
     source_material: str | None = None,
+    grading_lens: str = "balanced_quality",
     run_id: str | None = None,
     dataset_key: str | None = None,
 ):
@@ -43,6 +44,7 @@ async def save_responses(
         examples=examples,
         agent_type=agent_type,
         source_material=source_material,
+        grading_lens=grading_lens,
         run_id=run_id,
         dataset_key=dataset_key,
     )

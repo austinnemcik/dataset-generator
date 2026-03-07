@@ -249,6 +249,9 @@ type GenerationFormState = {
   sourceDatasetIds: string;
   personalityInstructions: string;
   sourceMaterialMode: "style_only" | "content_and_style";
+  sourceMaterialExampleSelection: "first" | "random";
+  sourceMaterialExampleLimit: string;
+  gradingLens: "balanced_quality" | "voice_alignment";
   model: string;
   maxConcurrency: string;
 };
@@ -332,6 +335,9 @@ function buildDefaultGenerationForm(defaultModel = ""): GenerationFormState {
     sourceDatasetIds: "",
     personalityInstructions: "",
     sourceMaterialMode: "content_and_style",
+    sourceMaterialExampleSelection: "random",
+    sourceMaterialExampleLimit: "250",
+    gradingLens: "balanced_quality",
     model: defaultModel,
     maxConcurrency: "25",
   };
@@ -380,6 +386,35 @@ function parseNumericApiValue(value: unknown): number | null {
 
 function formatNullableNumber(value: number | null | undefined, suffix = "", digits = 2): string {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : "--";
+}
+
+function filenameFromContentDisposition(headerValue: string | null): string | null {
+  if (!headerValue) {
+    return null;
+  }
+
+  const utf8Match = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const plainMatch = headerValue.match(/filename="?([^\";]+)"?/i);
+  return plainMatch?.[1] ?? null;
+}
+
+function triggerBrowserDownload(blob: Blob, filename: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
 }
 
 function dismissSearch(setSearchQuery: (value: string) => void) {
@@ -1679,6 +1714,9 @@ function App() {
           auto_merge_similarity_threshold: Number(globalMergeThreshold),
           source_material: sourceMaterial,
           source_material_mode: generationForm.sourceMaterialMode,
+          source_material_example_selection: generationForm.sourceMaterialExampleSelection,
+          source_material_example_limit: Number(generationForm.sourceMaterialExampleLimit),
+          grading_lens: generationForm.gradingLens,
           random_agent: false,
           max_concurrency: Number(generationForm.maxConcurrency),
           max_retries: 1,
@@ -2503,9 +2541,9 @@ function App() {
       }
 
       const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+      const filename =
+        filenameFromContentDisposition(response.headers.get("Content-Disposition")) || `export-rerun-${exportId}.jsonl`;
+      triggerBrowserDownload(blob, filename);
 
       setToast({ tone: "success", message: "Export rerun completed and opened." });
 
@@ -2564,9 +2602,10 @@ function App() {
 
       const historyId = response.headers.get("X-Export-History-Id");
       const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+      const filename =
+        filenameFromContentDisposition(response.headers.get("Content-Disposition")) ||
+        `dataset-export-${historyId || "download"}.jsonl`;
+      triggerBrowserDownload(blob, filename);
 
       setExportMessage(historyId ? `Export created. History ID ${historyId}.` : "Export created.");
       setExportForm(defaultExportForm);

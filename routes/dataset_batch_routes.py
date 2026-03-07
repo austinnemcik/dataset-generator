@@ -84,6 +84,9 @@ def _aggregate_batch_summary(
     agent_types: list,
     random_agent: bool,
     source_material_mode: str,
+    source_material_example_limit: int,
+    source_material_example_selection: str,
+    grading_lens: str,
     source_material_dataset_ids: list[int],
     source_material_text_block_count: int,
     resolved_source_material: str | None,
@@ -104,6 +107,9 @@ def _aggregate_batch_summary(
         "source_material_dataset_ids": source_material_dataset_ids,
         "source_material_text_block_count": source_material_text_block_count,
         "source_material_mode": source_material_mode,
+        "source_material_example_limit": source_material_example_limit,
+        "source_material_example_selection": source_material_example_selection,
+        "grading_lens": grading_lens,
         "source_material_input_kind": _source_material_input_kind(
             resolved_source_material,
             source_material_dataset_ids,
@@ -153,6 +159,9 @@ def register_batch_routes(router: APIRouter):
         request_group_id = body.request_group_id
         source_material = body.source_material
         source_material_mode = body.source_material_mode
+        source_material_example_limit = body.source_material_example_limit
+        source_material_example_selection = body.source_material_example_selection
+        grading_lens = body.grading_lens
         conversation_length_mode = body.conversation_length_mode
         model = body.model
         auto_merge_related = body.auto_merge_related
@@ -162,7 +171,13 @@ def register_batch_routes(router: APIRouter):
                 resolved_source_material,
                 source_material_dataset_ids,
                 source_material_text_block_count,
-            ) = resolve_source_material(source_material, session)
+            ) = resolve_source_material(
+                source_material,
+                session,
+                dataset_example_limit=source_material_example_limit,
+                dataset_example_selection=source_material_example_selection,
+                seed=seed,
+            )
         except ValueError as e:
             return response_builder(success=False, message=str(e), statusCode=400)
 
@@ -194,6 +209,7 @@ def register_batch_routes(router: APIRouter):
                         source_material=resolved_source_material,
                         source_material_mode=source_material_mode,
                         conversation_length_mode=conversation_length_mode,
+                        grading_lens=grading_lens,
                         ex_amt=ex_amt,
                         random_agent=random_agent,
                         max_concurrency=slot_max_concurrency,
@@ -229,6 +245,9 @@ def register_batch_routes(router: APIRouter):
             agent_types=agent_types,
             random_agent=random_agent,
             source_material_mode=source_material_mode,
+            source_material_example_limit=source_material_example_limit,
+            source_material_example_selection=source_material_example_selection,
+            grading_lens=grading_lens,
             source_material_dataset_ids=source_material_dataset_ids,
             source_material_text_block_count=source_material_text_block_count,
             resolved_source_material=resolved_source_material,

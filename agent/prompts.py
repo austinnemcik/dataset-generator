@@ -93,7 +93,7 @@ _CONVERSATION_PATTERNS = [
 ]
 
 _CONVERSATION_TURN_DISTRIBUTIONS = {
-    "short": ["2-3 turns", "2-4 turns"],
+    "short": ["3-4 turns", "3-5 turns", "4-5 turns"],
     "balanced": ["3-4 turns", "4-5 turns", "4-6 turns"],
     "long": ["5-7 turns", "6-8 turns", "7-9 turns"],
     "varied": ["2-3 turns", "2-4 turns", "3-5 turns", "4-6 turns", "6-8 turns"],

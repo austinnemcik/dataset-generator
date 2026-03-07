@@ -125,6 +125,24 @@ def test_build_prompt_for_conversation_long_length_uses_longer_turn_targets():
     assert "turn_target=6-8 turns" in prompt or "turn_target=7-9 turns" in prompt or "turn_target=5-7 turns" in prompt
 
 
+def test_build_prompt_for_conversation_short_length_avoids_tiniest_turn_targets():
+    pytest.importorskip("sqlmodel")
+    from agent.prompts import build_prompt
+    from agent.types import AgentType
+
+    prompt = build_prompt(
+        AgentType.conversation,
+        "Warm casual conversation with follow-up questions",
+        4,
+        conversation_length_mode="short",
+        seed=1,
+    )
+
+    assert "Conversation length mode: short." in prompt
+    assert "turn_target=2-3 turns" not in prompt
+    assert "turn_target=2-4 turns" not in prompt
+
+
 def test_build_prompt_for_technical_conversation_still_uses_conversation_turn_targets():
     pytest.importorskip("sqlmodel")
     from agent.prompts import build_prompt

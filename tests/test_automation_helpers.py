@@ -319,6 +319,7 @@ def test_prepare_item_attempt_reads_source_material_mode_from_request_payload():
             "topic": "warm conversation",
             "max_concurrency": 1,
             "source_material_mode": "style_only",
+            "grading_lens": "voice_alignment",
         },
         run_plan=[
             {
@@ -345,6 +346,7 @@ def test_prepare_item_attempt_reads_source_material_mode_from_request_payload():
 
     assert exhausted is False
     assert prepared["source_material_mode"] == "style_only"
+    assert prepared["grading_lens"] == "voice_alignment"
 
 
 def test_delete_batch_run_removes_completed_run():

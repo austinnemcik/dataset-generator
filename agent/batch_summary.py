@@ -158,6 +158,7 @@ def build_batch_summary(batch_run: BatchRun, items: list[BatchRunItem]) -> dict:
         "planned_topics": request_payload.get("planned_topics", []),
         "requested_topic": request_payload.get("topic"),
         "source_material_mode": request_payload.get("source_material_mode", "content_and_style"),
+        "grading_lens": request_payload.get("grading_lens", "balanced_quality"),
         "agent_usage": dict(agent_usage),
         "topic_usage": dict(topic_usage),
         "slot_usage": dict(slot_usage),

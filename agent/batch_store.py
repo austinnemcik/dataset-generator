@@ -285,6 +285,7 @@ def prepare_item_attempt(item_id: int) -> tuple[dict, bool] | None:
                 "source_material": item.source_material,
                 "source_material_mode": request_payload.get("source_material_mode", "content_and_style"),
                 "conversation_length_mode": request_payload.get("conversation_length_mode", "varied"),
+                "grading_lens": request_payload.get("grading_lens", "balanced_quality"),
                 "model": item.model,
                 "slot_key": item.slot_key,
                 "seed": item.seed,

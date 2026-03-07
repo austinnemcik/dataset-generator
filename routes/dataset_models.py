@@ -59,6 +59,9 @@ class BatchGeneration(BaseModel):
     seed: int | None = None
     source_material: str | list[int | str] | None = None
     source_material_mode: Literal["style_only", "content_and_style"] = "content_and_style"
+    source_material_example_limit: int = 250
+    source_material_example_selection: Literal["first", "random"] = "random"
+    grading_lens: Literal["balanced_quality", "voice_alignment"] = "balanced_quality"
     conversation_length_mode: Literal["varied", "short", "balanced", "long"] = "varied"
     model: str | None = None
 
@@ -88,6 +91,13 @@ class BatchGeneration(BaseModel):
     def validate_max_concurrency(cls, value: int) -> int:
         if value < 1 or value > 50:
             raise ValueError("max_concurrency must be in the range 1-50.")
+        return value
+
+    @field_validator("source_material_example_limit")
+    @classmethod
+    def validate_source_material_example_limit(cls, value: int) -> int:
+        if value < 1 or value > 500:
+            raise ValueError("source_material_example_limit must be in the range 1-500.")
         return value
 
     @field_validator("topics")

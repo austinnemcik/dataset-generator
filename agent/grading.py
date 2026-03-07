@@ -1,4 +1,5 @@
 import json
+from typing import Literal
 
 import app.core.logger as logger
 from app.core.generics import TimedLabel, saveScore, timer
@@ -21,6 +22,8 @@ CATEGORY_TAXONOMY = (
     "lifestyle_practical",
     "general_reasoning",
 )
+
+GradingLens = Literal["balanced_quality", "voice_alignment"]
 
 
 def _normalize_category(raw_category: object) -> str | None:
@@ -48,6 +51,7 @@ def _grading_score_metadata(
     rejected_count: int,
     notes: str,
     category: str | None,
+    grading_lens: GradingLens,
     run_id: str | None,
     dataset_key: str | None,
 ) -> dict:
@@ -61,6 +65,7 @@ def _grading_score_metadata(
         "accepted_count": accepted_count,
         "rejected_count": rejected_count,
         "notes": notes,
+        "grading_lens": grading_lens,
         "run_id": run_id,
         "dataset_key": dataset_key,
     }
@@ -83,7 +88,12 @@ def _safe_float(value: object, default: float = 0.0) -> float:
         return default
 
 
-def _evaluate_loaded_rows(batch_examples: list[dict], loaded: dict) -> tuple[list[dict], list[dict], float, str, str | None]:
+def _evaluate_loaded_rows(
+    batch_examples: list[dict],
+    loaded: dict,
+    *,
+    grading_lens: GradingLens = "balanced_quality",
+) -> tuple[list[dict], list[dict], float, str, str | None]:
     grading_settings = get_client_settings()
     row_map = _row_map(loaded.get("rows", []))
 
@@ -94,7 +104,10 @@ def _evaluate_loaded_rows(batch_examples: list[dict], loaded: dict) -> tuple[lis
         row_score = _safe_float(row.get("score_0_10", 0))
         accept_flag = int(row.get("accept", 0)) if isinstance(row, dict) else 0
         reason = str(row.get("reason", "")) if isinstance(row, dict) else "missing_row"
-        short_response = len(str(ex.get("response", "")).strip()) < grading_settings.min_response_char_length
+        short_response = (
+            grading_lens == "balanced_quality"
+            and len(str(ex.get("response", "")).strip()) < grading_settings.min_response_char_length
+        )
         if accept_flag == 1 and row_score >= grading_settings.min_grading_score and not short_response:
             accepted_local.append(ex)
         else:
@@ -135,6 +148,7 @@ async def run_grading_agent(
     topic: str,
     agent_type: AgentType,
     source_material: str | None = None,
+    grading_lens: GradingLens = "balanced_quality",
     run_id: str | None = None,
     dataset_key: str | None = None,
 ):
@@ -163,6 +177,7 @@ Metadata:
 - model: {model}
 - topic: {topic}
 - pass_tag: {tag}
+- grading_lens: {grading_lens}
 
 Input dataset JSON:
 {json.dumps(batch_examples)}
@@ -184,6 +199,13 @@ Rules:
 - idx must be 0-based and align to input order.
 - category must be exactly one of: {", ".join(CATEGORY_TAXONOMY)}.
 - accept = 1 only when score_0_10 >= {grading_settings.min_grading_score}.
+- If grading_lens is "balanced_quality":
+  - prioritize factuality, instruction-following, coherence, and usefulness.
+  - reject responses that are too short to be useful.
+- If grading_lens is "voice_alignment":
+  - prioritize persona consistency, writing style, emotional tone, and dialogue naturalness.
+  - do not reject imaginative or fictional content just because it is not factual.
+  - allow shorter in-character replies when they still feel authentic and complete.
 - No markdown. No extra keys outside schema.{retry_note}
 """
             result = await run_agent_async(
@@ -218,9 +240,13 @@ Rules:
 - Keep each item aligned to its original_idx.
 - response must be a JSON string value.
 - No markdown/code fences.
+- For grading_lens "voice_alignment": prioritize stronger character voice, tone consistency,
+  and natural roleplay flow over factual density.
 
 Rejected examples:
 {json.dumps(rejected_rows)}
+
+Current grading_lens: {grading_lens}
 """
         result = await run_agent_async(
             system_prompt=load_prompt(agent_type.value),
@@ -273,13 +299,18 @@ Rejected examples:
                 rejected_count=len(examples),
                 notes=str(parse_failure),
                 category=None,
+                grading_lens=grading_lens,
                 run_id=run_id,
                 dataset_key=dataset_key,
             ),
         )
         return _empty_grading_result(str(parse_failure))
 
-    accepted, rejected, dataset_score, dataset_notes, dataset_category = _evaluate_loaded_rows(examples, loaded)
+    accepted, rejected, dataset_score, dataset_notes, dataset_category = _evaluate_loaded_rows(
+        examples,
+        loaded,
+        grading_lens=grading_lens,
+    )
 
     # One regeneration pass for rejected items, then one re-grade pass.
     if rejected:
@@ -297,7 +328,11 @@ Rejected examples:
                     regen_examples, stage="grading_regeneration_batch", tag="regenerated"
                 )
                 if not parse_fail_regen and isinstance(loaded_regen, dict):
-                    regen_accepted, _, _, _, _ = _evaluate_loaded_rows(regen_examples, loaded_regen)
+                    regen_accepted, _, _, _, _ = _evaluate_loaded_rows(
+                        regen_examples,
+                        loaded_regen,
+                        grading_lens=grading_lens,
+                    )
                     # Map back accepted regenerated examples to original positions.
                     for ex in regen_examples:
                         if ex in regen_accepted:
@@ -322,6 +357,7 @@ Rejected examples:
             rejected_count=rejected_count,
             notes=dataset_notes,
             category=dataset_category,
+            grading_lens=grading_lens,
             run_id=run_id,
             dataset_key=dataset_key,
         ),
@@ -329,7 +365,7 @@ Rejected examples:
     logger.saveToLog(
         (
             f"[run_grading_agent] Batch summary generator_model={model} grader_model={grading_settings.grading_model} "
-            f"topic={topic} category={dataset_category} input={len(examples)} accepted={len(accepted)} "
+            f"topic={topic} category={dataset_category} grading_lens={grading_lens} input={len(examples)} accepted={len(accepted)} "
             f"rejected={rejected_count} dataset_score={dataset_score}"
         ),
         "INFO",

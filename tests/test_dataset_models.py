@@ -25,6 +25,9 @@ def test_batch_generation_auto_merge_defaults_and_validation():
     )
     assert body.auto_merge_related is False
     assert body.auto_merge_similarity_threshold == 0.65
+    assert body.source_material_example_selection == "random"
+    assert body.source_material_example_limit == 250
+    assert body.grading_lens == "balanced_quality"
 
     with pytest.raises(ValueError, match="auto_merge_similarity_threshold"):
         BatchGeneration(
@@ -33,5 +36,14 @@ def test_batch_generation_auto_merge_defaults_and_validation():
             agent_types=[AgentType.qa],
             ex_amt=10,
             auto_merge_similarity_threshold=0,
+        )
+
+    with pytest.raises(ValueError, match="source_material_example_limit"):
+        BatchGeneration(
+            amount=3,
+            topics=["Security"],
+            agent_types=[AgentType.qa],
+            ex_amt=10,
+            source_material_example_limit=0,
         )
 

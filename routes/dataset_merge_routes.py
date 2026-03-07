@@ -40,7 +40,7 @@ def discover_merge_pools(
     dataset_similarity_threshold: float,
     merge_run_id: str | None = None,
     candidate_dataset_ids: Sequence[int] | None = None,
-) -> tuple[list[list[int]], int]:
+) -> tuple[list[list[int]], int, int]:
     candidate_ids: list[int] | None = None
     if candidate_dataset_ids is not None:
         candidate_ids = []
@@ -54,7 +54,7 @@ def discover_merge_pools(
     stmt = select(Dataset).order_by(Dataset.id)
     if candidate_ids is not None:
         if not candidate_ids:
-            return [], 0
+            return [], 0, 0
         stmt = stmt.where(Dataset.id.in_(candidate_ids))
 
     datasets = session.exec(stmt).all()
@@ -82,6 +82,7 @@ def discover_merge_pools(
 
     pools: list[list[int]] = []
     assigned: set[int] = set()
+    skipped_dimension_mismatch = 0
     for i, (dataset_id, centroid) in enumerate(centroids):
         if dataset_id in assigned:
             continue
@@ -90,6 +91,9 @@ def discover_merge_pools(
         for j in range(i + 1, len(centroids)):
             other_id, other_centroid = centroids[j]
             if other_id in assigned:
+                continue
+            if len(centroid) != len(other_centroid):
+                skipped_dimension_mismatch += 1
                 continue
             similarity = float(cosine_similarity(centroid, other_centroid))
             if similarity >= dataset_similarity_threshold:
@@ -103,11 +107,12 @@ def discover_merge_pools(
             f"[merge_datasets] {run_tag}Discovery complete "
             f"threshold={dataset_similarity_threshold} centroid_datasets={len(centroids)} "
             f"pools_found={len(pools)} skipped_without_embeddings={skipped_without_embeddings} "
+            f"skipped_dimension_mismatch={skipped_dimension_mismatch} "
             f"scoped_dataset_count={(len(candidate_ids) if candidate_ids is not None else 'all')}"
         ),
         "INFO",
     )
-    return pools, skipped_without_embeddings
+    return pools, skipped_without_embeddings, skipped_dimension_mismatch
 
 
 async def execute_merge_request(
@@ -144,10 +149,11 @@ async def execute_merge_request(
         explicit_pool = _explicit_merge_pool(body.dataset_ids)
         pools = [explicit_pool] if explicit_pool else []
         skipped_without_embeddings = 0
+        skipped_dimension_mismatch = 0
         discovery_mode = False
         logger.saveToLog(f"{log_prefix} Using explicit merge pool: {explicit_pool}", "INFO")
     else:
-        pools, skipped_without_embeddings = discover_merge_pools(
+        pools, skipped_without_embeddings, skipped_dimension_mismatch = discover_merge_pools(
             session,
             body.dataset_similarity_threshold,
             effective_merge_run_id,
@@ -174,6 +180,7 @@ async def execute_merge_request(
                 "dataset_similarity_threshold": body.dataset_similarity_threshold,
                 "pools_found": 0,
                 "skipped_without_embeddings": skipped_without_embeddings,
+                "skipped_dimension_mismatch": skipped_dimension_mismatch,
             },
         }
 
@@ -220,7 +227,12 @@ async def execute_merge_request(
         deduped_in_pool = 0
         for ex in all_examples:
             parsed_embedding = parse_embedding(ex.embedding)
-            if parsed_embedding is not None and is_duplicate(parsed_embedding, existing_embeddings, threshold=0.8):
+            comparable_embeddings = (
+                [embedding for embedding in existing_embeddings if len(embedding) == len(parsed_embedding)]
+                if parsed_embedding is not None
+                else []
+            )
+            if parsed_embedding is not None and is_duplicate(parsed_embedding, comparable_embeddings, threshold=0.8):
                 deduped_in_pool += 1
                 continue
             if parsed_embedding is not None:
@@ -306,6 +318,7 @@ async def execute_merge_request(
                 "merge_run_id": effective_merge_run_id,
                 "pools_requested": len(pools),
                 "skipped_without_embeddings": skipped_without_embeddings,
+                "skipped_dimension_mismatch": skipped_dimension_mismatch,
             },
         }
 
@@ -335,6 +348,7 @@ async def execute_merge_request(
             "examples_after_dedupe": total_examples_after_dedupe,
             "deduped_examples": total_deduped,
             "skipped_without_embeddings": skipped_without_embeddings,
+            "skipped_dimension_mismatch": skipped_dimension_mismatch,
         },
     }
 

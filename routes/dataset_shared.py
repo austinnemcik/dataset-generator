@@ -1,3 +1,5 @@
+import random
+
 from sse_starlette.sse import EventSourceResponse
 from sqlmodel import Session, select
 
@@ -50,6 +52,10 @@ def _parse_source_material_items(
 def resolve_source_material(
     source_material: str | list[int | str] | None,
     session: Session,
+    *,
+    dataset_example_limit: int | None = None,
+    dataset_example_selection: str = "first",
+    seed: int | None = None,
 ) -> tuple[str | None, list[int], int]:
     if source_material is None:
         return None, [], 0
@@ -58,6 +64,10 @@ def resolve_source_material(
         return (cleaned or None), [], (1 if cleaned else 0)
     if not isinstance(source_material, list):
         raise ValueError("source_material must be a string or list of dataset IDs/text blocks.")
+    if dataset_example_limit is not None and dataset_example_limit <= 0:
+        raise ValueError("dataset_example_limit must be greater than 0.")
+    if dataset_example_selection not in {"first", "random"}:
+        raise ValueError("dataset_example_selection must be 'first' or 'random'.")
 
     dataset_ids, document_ids, text_blocks = _parse_source_material_items(source_material)
 
@@ -99,7 +109,18 @@ def resolve_source_material(
             context_lines.append(f"DATASET {dataset.id}: {dataset.name}")
             if dataset.description:
                 context_lines.append(f"DESCRIPTION: {dataset.description}")
-            for idx, example in enumerate(examples_by_dataset.get(dataset.id, []), start=1):
+            dataset_examples = examples_by_dataset.get(dataset.id, [])
+            if dataset_example_limit is None:
+                selected_examples = dataset_examples
+            elif dataset_example_selection == "random" and len(dataset_examples) > dataset_example_limit:
+                rng_seed = seed if seed is not None else random.randrange(1 << 30)
+                rng = random.Random(f"{rng_seed}:{dataset.id}")
+                selected_examples = rng.sample(dataset_examples, dataset_example_limit)
+                selected_examples.sort(key=lambda example: example.id or 0)
+            else:
+                selected_examples = dataset_examples[:dataset_example_limit]
+
+            for idx, example in enumerate(selected_examples, start=1):
                 context_lines.append(f"EXAMPLE {idx} INSTRUCTION: {example.instruction}")
                 context_lines.append(f"EXAMPLE {idx} RESPONSE: {example.response}")
 

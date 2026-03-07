@@ -5,8 +5,8 @@ def test_default_temperature_for_stage_uses_generation_temperature():
     pytest.importorskip("sqlmodel")
     from agent.llm import _default_temperature_for_stage
 
-    assert _default_temperature_for_stage("generation") == 0.75
-    assert _default_temperature_for_stage("regeneration_batch") == 0.75
+    assert _default_temperature_for_stage("generation") == 0.70
+    assert _default_temperature_for_stage("regeneration_batch") == 0.70
 
 
 def test_default_temperature_for_stage_uses_lower_naming_and_grading_temperatures():

@@ -10,7 +10,7 @@ from .settings import calculate_price, client, get_client_settings
 def _default_temperature_for_stage(stage: str) -> float:
     normalized = (stage or "").strip().lower()
     if normalized in {"generation", "regeneration_batch"}:
-        return 0.75
+        return 0.70
     if normalized in {"naming", "topic_planning"}:
         return 0.3
     if normalized in {"grading_batch", "grading_regeneration_batch"}:

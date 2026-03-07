@@ -21,7 +21,7 @@ const CONVERSATION_LENGTH_OPTIONS = [
   {
     id: "short",
     label: "Short",
-    description: "Bias toward quicker 2-4 turn exchanges when you want broader scenario coverage.",
+    description: "Bias toward compact but safer 3-5 turn exchanges so you still get brief chats without the tiniest brittle formats.",
   },
   {
     id: "balanced",
@@ -114,6 +114,9 @@ type GenerationFormState = {
   sourceDatasetIds: string;
   personalityInstructions: string;
   sourceMaterialMode: "style_only" | "content_and_style";
+  sourceMaterialExampleSelection: "first" | "random";
+  sourceMaterialExampleLimit: string;
+  gradingLens: "balanced_quality" | "voice_alignment";
   model: string;
   maxConcurrency: string;
 };
@@ -472,6 +475,95 @@ export function GenerationView({
             </div>
             <span className="field-hint">
               Attached dataset examples are expanded into source material before generation starts.
+            </span>
+          </div>
+
+          <div className="field">
+            <span className="field-label">Support Sample Mode</span>
+            <div className="agent-chip-grid">
+              <button
+                className={
+                  form.sourceMaterialExampleSelection === "random" ? "agent-chip agent-chip-active" : "agent-chip"
+                }
+                onClick={() =>
+                  onFormChange((current) => ({
+                    ...current,
+                    sourceMaterialExampleSelection: "random",
+                  }))
+                }
+                type="button"
+              >
+                Random
+              </button>
+              <button
+                className={
+                  form.sourceMaterialExampleSelection === "first" ? "agent-chip agent-chip-active" : "agent-chip"
+                }
+                onClick={() =>
+                  onFormChange((current) => ({
+                    ...current,
+                    sourceMaterialExampleSelection: "first",
+                  }))
+                }
+                type="button"
+              >
+                First
+              </button>
+            </div>
+            <span className="field-hint">
+              Random uses a sample from each selected support dataset. First uses the earliest rows.
+            </span>
+          </div>
+
+          <label className="field">
+            <span className="field-label">Support Sample Size</span>
+            <select
+              onChange={(event) =>
+                onFormChange((current) => ({
+                  ...current,
+                  sourceMaterialExampleLimit: event.target.value,
+                }))
+              }
+              value={form.sourceMaterialExampleLimit}
+            >
+              <option value="100">100 examples</option>
+              <option value="250">250 examples</option>
+              <option value="500">500 examples</option>
+            </select>
+            <span className="field-hint">Per selected dataset. Large datasets are capped to this many examples.</span>
+          </label>
+
+          <div className="field field-span-2">
+            <span className="field-label">Grading Lens</span>
+            <div className="agent-chip-grid">
+              <button
+                className={form.gradingLens === "balanced_quality" ? "agent-chip agent-chip-active" : "agent-chip"}
+                onClick={() =>
+                  onFormChange((current) => ({
+                    ...current,
+                    gradingLens: "balanced_quality",
+                  }))
+                }
+                type="button"
+              >
+                Balanced Quality
+              </button>
+              <button
+                className={form.gradingLens === "voice_alignment" ? "agent-chip agent-chip-active" : "agent-chip"}
+                onClick={() =>
+                  onFormChange((current) => ({
+                    ...current,
+                    gradingLens: "voice_alignment",
+                  }))
+                }
+                type="button"
+              >
+                Voice Alignment
+              </button>
+            </div>
+            <span className="field-hint">
+              Balanced Quality uses your current rubric. Voice Alignment prioritizes personality, tone, and in-character
+              consistency for roleplay-style output.
             </span>
           </div>
 
