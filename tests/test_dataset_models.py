@@ -11,3 +11,39 @@ def test_external_import_request_has_dedupe_and_chunk_defaults():
     assert body.chunk_size == 200
     assert body.max_records == 2000
 
+
+def test_batch_generation_auto_merge_defaults_and_validation():
+    pytest.importorskip("pydantic")
+    from app.core.enums import AgentType
+    from routes.dataset_models import BatchGeneration
+
+    body = BatchGeneration(
+        amount=3,
+        topics=["Security"],
+        agent_types=[AgentType.qa],
+        ex_amt=10,
+    )
+    assert body.auto_merge_related is False
+    assert body.auto_merge_similarity_threshold == 0.65
+    assert body.source_material_example_selection == "random"
+    assert body.source_material_example_limit == 250
+    assert body.grading_lens == "balanced_quality"
+
+    with pytest.raises(ValueError, match="auto_merge_similarity_threshold"):
+        BatchGeneration(
+            amount=3,
+            topics=["Security"],
+            agent_types=[AgentType.qa],
+            ex_amt=10,
+            auto_merge_similarity_threshold=0,
+        )
+
+    with pytest.raises(ValueError, match="source_material_example_limit"):
+        BatchGeneration(
+            amount=3,
+            topics=["Security"],
+            agent_types=[AgentType.qa],
+            ex_amt=10,
+            source_material_example_limit=0,
+        )
+

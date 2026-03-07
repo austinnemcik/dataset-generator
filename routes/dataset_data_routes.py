@@ -18,6 +18,7 @@ from routes.dataset_models import (
     Generation,
     IngestExamples,
     ScraperIntakeRequest,
+    UpdateTrainingExample,
 )
 from routes.dataset_shared import resolve_source_material
 from routes.data_processing import scraper_reference_card, upload_reference_card
@@ -579,6 +580,8 @@ def register_data_routes(router: APIRouter):
         topic = body.topic
         amount = body.amount
         source_material = body.source_material
+        source_material_mode = body.source_material_mode
+        conversation_length_mode = body.conversation_length_mode
         model = body.model
         run_id = new_run_id()
         dataset_key = f"{run_id}:{topic}"
@@ -590,6 +593,8 @@ def register_data_routes(router: APIRouter):
                     topic=topic,
                     amt=amount,
                     source_material=resolved_source_material,
+                    source_material_mode=source_material_mode,
+                    conversation_length_mode=conversation_length_mode,
                     model=model,
                     run_id=run_id,
                     dataset_key=dataset_key,
@@ -600,6 +605,8 @@ def register_data_routes(router: APIRouter):
                     topic=topic,
                     amt=amount,
                     source_material=resolved_source_material,
+                    source_material_mode=source_material_mode,
+                    conversation_length_mode=conversation_length_mode,
                     run_id=run_id,
                     dataset_key=dataset_key,
                 )
@@ -653,6 +660,86 @@ def register_data_routes(router: APIRouter):
             return response_builder(
                 success=False,
                 message="An error occurred while removing dataset.",
+                statusCode=500,
+            )
+
+    @router.delete("/examples/{example_id}")
+    def delete_dataset_example(example_id: int, session: Session = Depends(get_session)):
+        try:
+            example = session.get(TrainingExample, example_id)
+            if not example:
+                raise ValueError("Training example not found.")
+
+            dataset = session.get(Dataset, example.dataset_id)
+            if not dataset:
+                raise ValueError("Parent dataset not found.")
+
+            dataset_id = dataset.id
+            session.delete(example)
+            session.commit()
+
+            remaining_examples = session.exec(
+                select(func.count(TrainingExample.id)).where(TrainingExample.dataset_id == dataset_id)
+            ).one()
+            return response_builder(
+                success=True,
+                message="Training example removed.",
+                statusCode=200,
+                data={"dataset_id": dataset_id, "remaining_examples": int(remaining_examples)},
+            )
+        except ValueError as e:
+            _log_route_error("dataset_example_delete.validation_failed", e, example_id=example_id)
+            return response_builder(success=False, message=str(e), statusCode=404)
+        except Exception as e:
+            session.rollback()
+            _log_route_error("dataset_example_delete.unexpected_error", e, example_id=example_id)
+            return response_builder(
+                success=False,
+                message="An error occurred while removing the training example.",
+                statusCode=500,
+            )
+
+    @router.put("/examples/{example_id}")
+    def update_dataset_example(
+        example_id: int,
+        body: UpdateTrainingExample,
+        session: Session = Depends(get_session),
+    ):
+        try:
+            example = session.get(TrainingExample, example_id)
+            if not example:
+                raise ValueError("Training example not found.")
+
+            example.instruction = body.instruction
+            example.response = body.response
+            # Existing embeddings no longer match edited text.
+            example.embedding = None
+            session.add(example)
+            session.commit()
+            session.refresh(example)
+
+            return response_builder(
+                success=True,
+                message="Training example updated.",
+                statusCode=200,
+                data={
+                    "example": {
+                        "id": example.id,
+                        "dataset_id": example.dataset_id,
+                        "instruction": example.instruction,
+                        "response": example.response,
+                    }
+                },
+            )
+        except ValueError as e:
+            _log_route_error("dataset_example_update.validation_failed", e, example_id=example_id)
+            return response_builder(success=False, message=str(e), statusCode=404)
+        except Exception as e:
+            session.rollback()
+            _log_route_error("dataset_example_update.unexpected_error", e, example_id=example_id)
+            return response_builder(
+                success=False,
+                message="An error occurred while updating the training example.",
                 statusCode=500,
             )
 

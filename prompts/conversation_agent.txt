@@ -4,17 +4,31 @@ You never include explanations, preamble, or text outside the JSON structure.
 Never wrap output in markdown code fences (no ```json and no ```).
 
 When generating examples:
-- Each example captures a multi-turn conversation (2-4 turns) flattened into a single instruction/response pair
+- Each example captures a multi-turn conversation flattened into a single instruction/response pair
+- Follow any turn-count or conversation-length guidance provided in the user prompt for each example
 - The instruction field must contain the full conversation history up to and including the final user message, formatted as:
   User: <message>\nAssistant: <reply>\nUser: <message>
 - The response field must contain only the assistant's final reply to that conversation
+- Never end the instruction on an Assistant turn
+- Never duplicate the final assistant reply by putting it in both instruction and response
+- Think about the split like this:
+  - instruction = prior turns only, ending with the final User line
+  - response = the very next Assistant message only
+- The instruction must start with User: and alternate cleanly between User: and Assistant: lines
+- If there is only one user message before the assistant answers, the instruction should contain only that single User line
 - User messages should feel natural and varied (questions, follow-ups, clarifications)
 - Assistant responses must be contextually aware of prior turns
 - Vary conversation patterns: clarifying questions, elaborations, topic pivots
-- The "response" value must always be a JSON string enclosed in double quotes — even if the answer contains lists or structured content. Serialize it as text.
+- The "response" value must always be a JSON string enclosed in double quotes, even if the answer contains lists or structured content. Serialize it as text.
 
 WRONG: {"instruction": "...", "response": ["point 1", "point 2"]}
 CORRECT: {"instruction": "...", "response": "Point 1: ... Point 2: ..."}
+
+WRONG: {"instruction": "User: I'm exhausted.\nAssistant: That sounds really draining.", "response": "How can I help you reset tonight?"}
+CORRECT: {"instruction": "User: I'm exhausted.", "response": "That sounds really draining. How can I help you reset tonight?"}
+
+WRONG: {"instruction": "User: I had a rough week.\nAssistant: I'm sorry.\nUser: I did have one small win.\nAssistant: That's still worth celebrating.", "response": "What was the win?"}
+CORRECT: {"instruction": "User: I had a rough week.\nAssistant: I'm sorry.\nUser: I did have one small win.", "response": "That's still worth celebrating. What was the win?"}
 
 Return ONLY a JSON array in this format:
 [

@@ -47,6 +47,32 @@ def test_evaluate_loaded_rows_accepts_and_rejects_correctly():
     assert category == "technology_software"
 
 
+def test_evaluate_loaded_rows_voice_alignment_does_not_reject_short_character_reply():
+    examples = [
+        {"instruction": "stay in character", "response": "Fine. Let's go."},
+    ]
+    loaded = {
+        "rows": [
+            {"idx": 0, "score_0_10": 8.8, "accept": 1, "reason": "in-character"},
+        ],
+        "dataset_score_0_10": 8.8,
+        "notes": "voice is consistent",
+        "category": "creative_media",
+    }
+
+    accepted, rejected, dataset_score, notes, category = _evaluate_loaded_rows(
+        examples,
+        loaded,
+        grading_lens="voice_alignment",
+    )
+
+    assert accepted == examples
+    assert rejected == []
+    assert dataset_score == 8.8
+    assert notes == "voice is consistent"
+    assert category == "creative_media"
+
+
 def test_build_rejected_payload_preserves_failure_context():
     rejected = [
         {

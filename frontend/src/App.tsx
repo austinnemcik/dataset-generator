@@ -40,9 +40,20 @@ type DatasetDetail = DatasetRow & {
   examplesPreviewLimit: number;
 };
 
+type MergeResponse = {
+  success?: boolean;
+  message?: string;
+  data?: {
+    created_dataset_ids?: number[];
+    pools_merged?: number;
+  };
+};
+
 type BatchRunRow = {
   run_id: string;
-  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "paused";
+  request_group_id?: string | null;
+  member_run_ids?: string[];
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "paused" | "stopping";
   requested_runs: number;
   saved: number;
   failed: number;
@@ -59,14 +70,24 @@ type BatchRunResult = {
   index: number;
   run_id: string;
   dataset_id: number | null;
-  status: "saved" | "failed";
+  status: "saved" | "failed" | "queued" | "running";
   topic: string | null;
   agent: string | null;
   error: string | null;
 };
 
+type BatchRunSlotSummary = {
+  slot_key: string;
+  requested_topic: string;
+  selected_agent: string;
+  requested_runs: number;
+  saved: number;
+  failed: number;
+};
+
 type BatchRunDetail = {
   batch_run_id: string;
+  request_group_id?: string | null;
   status: BatchRunRow["status"];
   requested_runs: number;
   saved: number;
@@ -80,6 +101,7 @@ type BatchRunDetail = {
   updated_at: string | null;
   started_at: string | null;
   completed_at: string | null;
+  per_slot_summary?: BatchRunSlotSummary[];
   results: BatchRunResult[];
 };
 
@@ -169,6 +191,15 @@ type BatchGenerateResponse = {
   message: string;
   data?: {
     batch_run_ids?: string[];
+    auto_merge?: {
+      requested?: boolean;
+      status?: "merged" | "no_candidates" | "failed" | "skipped" | "disabled";
+      message?: string;
+      result?: {
+        created_dataset_ids?: number[];
+        pools_merged?: number;
+      };
+    };
   };
 };
 
@@ -206,11 +237,21 @@ type BatchStreamEvent = {
   error: string | null;
 };
 
+type BatchAction = "pause" | "resume" | "stop" | "restart-failed" | "delete";
+
 type GenerationFormState = {
   topics: string;
   agentTypes: string;
+  allowTopicVariations: boolean;
+  conversationLengthMode: "varied" | "short" | "balanced" | "long";
   amount: string;
   exAmt: string;
+  sourceDatasetIds: string;
+  personalityInstructions: string;
+  sourceMaterialMode: "style_only" | "content_and_style";
+  sourceMaterialExampleSelection: "first" | "random";
+  sourceMaterialExampleLimit: string;
+  gradingLens: "balanced_quality" | "voice_alignment";
   model: string;
   maxConcurrency: string;
 };
@@ -281,14 +322,28 @@ const emptyDashboardCards = [
   { eyebrow: "API Cost", title: "--", body: "Loading total API cost." },
 ];
 
-const defaultGenerationForm: GenerationFormState = {
-  topics: "Code review and debugging\nSecurity vulnerability identification",
-  agentTypes: "qa, instruction_following, adversarial",
-  amount: "120",
-  exAmt: "25",
-  model: "google/gemini-2.5-flash",
-  maxConcurrency: "25",
-};
+const LEGACY_GENERATION_MODEL_DEFAULT = "google/gemini-2.5-flash";
+
+function buildDefaultGenerationForm(defaultModel = ""): GenerationFormState {
+  return {
+    topics: "Code review and debugging\nSecurity vulnerability identification",
+    agentTypes: "qa, instruction_following, adversarial",
+    allowTopicVariations: false,
+    conversationLengthMode: "varied",
+    amount: "120",
+    exAmt: "25",
+    sourceDatasetIds: "",
+    personalityInstructions: "",
+    sourceMaterialMode: "content_and_style",
+    sourceMaterialExampleSelection: "random",
+    sourceMaterialExampleLimit: "250",
+    gradingLens: "balanced_quality",
+    model: defaultModel,
+    maxConcurrency: "25",
+  };
+}
+
+const defaultGenerationForm = buildDefaultGenerationForm();
 
 const defaultExportForm: ExportFormState = {
   datasetIds: "",
@@ -329,6 +384,39 @@ function parseNumericApiValue(value: unknown): number | null {
   return null;
 }
 
+function formatNullableNumber(value: number | null | undefined, suffix = "", digits = 2): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : "--";
+}
+
+function filenameFromContentDisposition(headerValue: string | null): string | null {
+  if (!headerValue) {
+    return null;
+  }
+
+  const utf8Match = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const plainMatch = headerValue.match(/filename="?([^\";]+)"?/i);
+  return plainMatch?.[1] ?? null;
+}
+
+function triggerBrowserDownload(blob: Blob, filename: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+}
+
 function dismissSearch(setSearchQuery: (value: string) => void) {
   setSearchQuery("");
   if (document.activeElement instanceof HTMLElement) {
@@ -346,6 +434,166 @@ function uniqueSearchItems(items: SearchSection["items"]) {
     seen.add(key);
     return true;
   });
+}
+
+function summarizeTopics(topics: string[]) {
+  if (topics.length === 0) {
+    return null;
+  }
+  if (topics.length === 1) {
+    return topics[0];
+  }
+  return `${topics.length} topics`;
+}
+
+function summarizeAgents(agents: string[]) {
+  if (agents.length === 0) {
+    return null;
+  }
+  if (agents.length === 1) {
+    return agents[0];
+  }
+  return `${agents.length} agent types`;
+}
+
+function aggregateBatchRunStatus(rows: BatchRunRow[]): BatchRunRow["status"] {
+  const running = rows.reduce((total, row) => total + row.running, 0);
+  const queued = rows.reduce((total, row) => total + row.queued, 0);
+  const saved = rows.reduce((total, row) => total + row.saved, 0);
+  const failed = rows.reduce((total, row) => total + row.failed, 0);
+  const requested = rows.reduce((total, row) => total + row.requested_runs, 0);
+  const hasStopping = rows.some((row) => row.status === "stopping");
+  const hasCancelled = rows.some((row) => row.status === "cancelled");
+  const hasPaused = rows.some((row) => row.status === "paused");
+
+  if (hasStopping || (hasCancelled && running > 0) || (hasCancelled && queued > 0)) {
+    return "stopping";
+  }
+  if (running > 0) {
+    return "running";
+  }
+  if (hasPaused && queued > 0) {
+    return "paused";
+  }
+  if (queued > 0) {
+    return saved > 0 || failed > 0 ? "running" : "queued";
+  }
+  if (hasCancelled) {
+    return "cancelled";
+  }
+  if (failed === requested && requested > 0) {
+    return "failed";
+  }
+  return "completed";
+}
+
+function aggregateBatchRunGroup(rows: BatchRunRow[]): BatchRunRow {
+  const sorted = [...rows].sort((left, right) => {
+    const leftTime = left.created_at ? new Date(left.created_at).getTime() : 0;
+    const rightTime = right.created_at ? new Date(right.created_at).getTime() : 0;
+    return rightTime - leftTime;
+  });
+  const uniqueTopics = Array.from(new Set(rows.map((row) => row.topic).filter((value): value is string => Boolean(value))));
+  const uniqueAgents = Array.from(
+    new Set(rows.map((row) => row.requested_agent).filter((value): value is string => Boolean(value))),
+  );
+  const representative = sorted[0] ?? rows[0];
+
+  return {
+    run_id: representative.request_group_id || representative.run_id,
+    request_group_id: representative.request_group_id || representative.run_id,
+    member_run_ids: rows.map((row) => row.run_id),
+    status: aggregateBatchRunStatus(rows),
+    requested_runs: rows.reduce((total, row) => total + row.requested_runs, 0),
+    saved: rows.reduce((total, row) => total + row.saved, 0),
+    failed: rows.reduce((total, row) => total + row.failed, 0),
+    queued: rows.reduce((total, row) => total + row.queued, 0),
+    running: rows.reduce((total, row) => total + row.running, 0),
+    topic: summarizeTopics(uniqueTopics),
+    requested_agent: summarizeAgents(uniqueAgents),
+    created_at: rows
+      .map((row) => row.created_at)
+      .filter((value): value is string => Boolean(value))
+      .sort()[0] ?? representative.created_at,
+    updated_at: rows
+      .map((row) => row.updated_at)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1) ?? representative.updated_at,
+    completed_at: rows
+      .map((row) => row.completed_at)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1) ?? representative.completed_at,
+  };
+}
+
+function aggregateBatchRunDetail(details: BatchRunDetail[], selectedId: string): BatchRunDetail | null {
+  if (details.length === 0) {
+    return null;
+  }
+
+  const uniqueTopics = Array.from(
+    new Set(details.map((detail) => detail.topic).filter((value): value is string => Boolean(value))),
+  );
+  const uniqueAgents = Array.from(
+    new Set(details.map((detail) => detail.requested_agent).filter((value): value is string => Boolean(value))),
+  );
+  const allResults = details.flatMap((detail) => detail.results);
+  const slotMap = new Map<string, BatchRunSlotSummary>();
+
+  details.flatMap((detail) => detail.per_slot_summary ?? []).forEach((slot) => {
+    const current = slotMap.get(slot.slot_key);
+    if (current) {
+      current.requested_runs += slot.requested_runs;
+      current.saved += slot.saved;
+      current.failed += slot.failed;
+      return;
+    }
+    slotMap.set(slot.slot_key, { ...slot });
+  });
+
+  const startedAtValues = details.map((detail) => detail.started_at).filter((value): value is string => Boolean(value)).sort();
+  const createdAtValues = details.map((detail) => detail.created_at).filter((value): value is string => Boolean(value)).sort();
+  const updatedAtValues = details.map((detail) => detail.updated_at).filter((value): value is string => Boolean(value)).sort();
+  const completedAtValues = details.map((detail) => detail.completed_at).filter((value): value is string => Boolean(value)).sort();
+  const requestGroupId = details.find((detail) => detail.request_group_id)?.request_group_id ?? selectedId;
+
+  return {
+    batch_run_id: requestGroupId || selectedId,
+    request_group_id: requestGroupId,
+    status: aggregateBatchRunStatus(
+      details.map((detail) => ({
+        run_id: detail.batch_run_id,
+        request_group_id: detail.request_group_id,
+        status: detail.status,
+        requested_runs: detail.requested_runs,
+        saved: detail.saved,
+        failed: detail.failed,
+        queued: detail.queued,
+        running: detail.running,
+        topic: detail.topic,
+        requested_agent: detail.requested_agent,
+        created_at: detail.created_at,
+        updated_at: detail.updated_at,
+        completed_at: detail.completed_at,
+      })),
+    ),
+    requested_runs: details.reduce((total, detail) => total + detail.requested_runs, 0),
+    saved: details.reduce((total, detail) => total + detail.saved, 0),
+    failed: details.reduce((total, detail) => total + detail.failed, 0),
+    queued: details.reduce((total, detail) => total + detail.queued, 0),
+    running: details.reduce((total, detail) => total + detail.running, 0),
+    topic: summarizeTopics(uniqueTopics),
+    requested_agent: summarizeAgents(uniqueAgents),
+    random_agent: details.some((detail) => detail.random_agent),
+    created_at: createdAtValues[0] ?? null,
+    updated_at: updatedAtValues.at(-1) ?? null,
+    started_at: startedAtValues[0] ?? null,
+    completed_at: completedAtValues.at(-1) ?? null,
+    per_slot_summary: Array.from(slotMap.values()).sort((left, right) => right.requested_runs - left.requested_runs),
+    results: allResults,
+  };
 }
 
 function App() {
@@ -371,7 +619,7 @@ function App() {
   const [batchRunDetailLoading, setBatchRunDetailLoading] = useState<boolean>(false);
   const [batchRunDetailError, setBatchRunDetailError] = useState<string>("");
   const [batchStreamEvents, setBatchStreamEvents] = useState<BatchStreamEvent[]>([]);
-  const [batchStreamStatus, setBatchStreamStatus] = useState<"idle" | "connecting" | "live" | "offline">("idle");
+  const [batchStreamStatus, setBatchStreamStatus] = useState<"idle" | "connecting" | "live" | "offline" | "completed">("idle");
   const [batchActionPending, setBatchActionPending] = useState<string>("");
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [documentsError, setDocumentsError] = useState<string>("");
@@ -404,7 +652,7 @@ function App() {
   const [exportForm, setExportForm] = useState<ExportFormState>(defaultExportForm);
   const [isExportPickerOpen, setIsExportPickerOpen] = useState<boolean>(false);
   const [exportPickerQuery, setExportPickerQuery] = useState<string>("");
-  const [generationForm, setGenerationForm] = useState<GenerationFormState>(defaultGenerationForm);
+  const [generationForm, setGenerationForm] = useState<GenerationFormState>(() => buildDefaultGenerationForm());
   const [generationMessage, setGenerationMessage] = useState<string>("");
   const [generationSubmitting, setGenerationSubmitting] = useState<boolean>(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
@@ -419,8 +667,19 @@ function App() {
   const [settingsSaving, setSettingsSaving] = useState<boolean>(false);
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [datasetDeletePending, setDatasetDeletePending] = useState<boolean>(false);
+  const [exampleDeletePendingId, setExampleDeletePendingId] = useState<number | null>(null);
+  const [exampleSavePendingId, setExampleSavePendingId] = useState<number | null>(null);
   const [isDatasetViewOpen, setIsDatasetViewOpen] = useState<boolean>(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState<boolean>(false);
+  const [isTargetedMergeOpen, setIsTargetedMergeOpen] = useState<boolean>(false);
+  const [targetedMergeDatasetIds, setTargetedMergeDatasetIds] = useState<number[]>([]);
+  const [targetedMergeDeleteOriginals, setTargetedMergeDeleteOriginals] = useState<boolean>(false);
+  const [targetedMergeThreshold, setTargetedMergeThreshold] = useState<string>("0.65");
+  const [targetedMergePending, setTargetedMergePending] = useState<boolean>(false);
+  const [isGlobalMergeConfirmOpen, setIsGlobalMergeConfirmOpen] = useState<boolean>(false);
+  const [globalMergeDeleteOriginals, setGlobalMergeDeleteOriginals] = useState<boolean>(true);
+  const [globalMergeThreshold, setGlobalMergeThreshold] = useState<string>("0.65");
+  const [globalMergePending, setGlobalMergePending] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [datasetsRefreshKey, setDatasetsRefreshKey] = useState<number>(0);
   const [examplePreviewOffset, setExamplePreviewOffset] = useState<number>(0);
@@ -541,6 +800,44 @@ function App() {
     [exportForm.datasetIds],
   );
 
+  const selectedGenerationSourceDatasetIds = useMemo(
+    () =>
+      generationForm.sourceDatasetIds
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0),
+    [generationForm.sourceDatasetIds],
+  );
+
+  const groupedBatchRuns = useMemo(() => {
+    const groups = new Map<string, BatchRunRow[]>();
+    batchRuns.forEach((run) => {
+      const key = run.request_group_id || run.run_id;
+      const current = groups.get(key) ?? [];
+      current.push(run);
+      groups.set(key, current);
+    });
+
+    return Array.from(groups.values())
+      .map((rows) => aggregateBatchRunGroup(rows))
+      .sort((left, right) => {
+        const leftTime = left.updated_at ? new Date(left.updated_at).getTime() : 0;
+        const rightTime = right.updated_at ? new Date(right.updated_at).getTime() : 0;
+        return rightTime - leftTime;
+      });
+  }, [batchRuns]);
+
+  const selectedBatchMemberRunIds = useMemo(() => {
+    const selected = groupedBatchRuns.find((run) => run.run_id === selectedBatchRunId);
+    return selected?.member_run_ids ?? [];
+  }, [groupedBatchRuns, selectedBatchRunId]);
+  const selectedBatchMemberRunKey = useMemo(
+    () => selectedBatchMemberRunIds.join(","),
+    [selectedBatchMemberRunIds],
+  );
+
   const exportPickerDatasets = useMemo(() => {
     const query = exportPickerQuery.trim().toLowerCase();
     const sorted = [...datasets].sort((left, right) => left.name.localeCompare(right.name));
@@ -558,12 +855,11 @@ function App() {
   const filteredModelOptions = useMemo(() => {
     const query = modelPickerQuery.trim().toLowerCase();
     if (!query) {
-      return modelOptions.slice(0, 100);
+      return modelOptions;
     }
 
     return modelOptions
-      .filter((model) => model.id.toLowerCase().includes(query) || model.name.toLowerCase().includes(query))
-      .slice(0, 100);
+      .filter((model) => model.id.toLowerCase().includes(query) || model.name.toLowerCase().includes(query));
   }, [modelOptions, modelPickerQuery]);
 
   const datasetCategories = useMemo(
@@ -628,22 +924,25 @@ function App() {
       },
       {
         eyebrow: "Embedding",
-        title: `${dashboardStats.embedding_time.toFixed(2)}s`,
+        title: formatNullableNumber(dashboardStats.embedding_time, "s"),
         body: "Average embedding completion time from benchmark logs.",
       },
       {
         eyebrow: "Ingest",
-        title: `${dashboardStats.ingest_time.toFixed(2)}s`,
+        title: formatNullableNumber(dashboardStats.ingest_time, "s"),
         body: "Average ingest API duration from benchmark logs.",
       },
       {
         eyebrow: "Grading",
-        title: `${dashboardStats.grading_time.toFixed(2)}s`,
+        title: formatNullableNumber(dashboardStats.grading_time, "s"),
         body: "Average grading completion time from benchmark logs.",
       },
       {
         eyebrow: "API Cost",
-        title: `$${dashboardStats.api_cost.toFixed(2)}`,
+        title:
+          typeof dashboardStats.api_cost === "number" && Number.isFinite(dashboardStats.api_cost)
+            ? `$${dashboardStats.api_cost.toFixed(2)}`
+            : "--",
         body: "Accumulated API cost recorded in the benchmark summary.",
       },
     ];
@@ -795,30 +1094,49 @@ function App() {
     };
     const rows = payload.data?.runs ?? [];
     setBatchRuns(rows);
-    setSelectedBatchRunId((current) => (rows.some((run) => run.run_id === current) ? current : rows[0]?.run_id ?? ""));
+    const groupedRows = Array.from(
+      rows.reduce((groups, run) => {
+        const key = run.request_group_id || run.run_id;
+        const current = groups.get(key) ?? [];
+        current.push(run);
+        groups.set(key, current);
+        return groups;
+      }, new Map<string, BatchRunRow[]>()),
+    ).map(([, grouped]) => aggregateBatchRunGroup(grouped));
+    setSelectedBatchRunId((current) =>
+      groupedRows.some((run) => run.run_id === current) ? current : groupedRows[0]?.run_id ?? "",
+    );
   }, []);
 
   const loadBatchRunDetail = useCallback(
-    async (runId: string, signal?: AbortSignal) => {
-      if (!runId) {
+    async (groupId: string, memberRunIds: string[], signal?: AbortSignal) => {
+      if (!groupId) {
         setSelectedBatchRunDetail(null);
         setBatchRunDetailError("");
         return;
       }
 
-      setBatchRunDetailError("");
-      const response = await fetch(`/api/dataset/batch/${runId}`, { signal });
-      if (!response.ok) {
-        throw new Error(`Batch detail request failed with ${response.status}`);
-      }
+      const targetRunIds = memberRunIds.length > 0 ? memberRunIds : [groupId];
 
-      const payload = (await response.json()) as {
-        data?: BatchRunDetail;
-      };
-      if (!payload.data) {
-        throw new Error("Batch detail response was empty.");
-      }
-      setSelectedBatchRunDetail(payload.data);
+      setBatchRunDetailError("");
+      const responses = await Promise.all(
+        targetRunIds.map(async (runId) => {
+          const response = await fetch(`/api/dataset/batch/${runId}`, { signal });
+          if (!response.ok) {
+            throw new Error(`Batch detail request failed with ${response.status}`);
+          }
+          const payload = (await response.json()) as {
+            data?: BatchRunDetail;
+          };
+          if (!payload.data) {
+            throw new Error("Batch detail response was empty.");
+          }
+          return payload.data;
+        }),
+      );
+      const aggregatedDetail = aggregateBatchRunDetail(responses, groupId);
+      setSelectedBatchRunDetail(aggregatedDetail);
+      return aggregatedDetail;
     },
     [],
   );
@@ -954,7 +1272,7 @@ function App() {
     async function loadModels() {
       try {
         setModelOptionsLoading(true);
-        const response = await fetch("/api/utils/models?query=&limit=100", {
+        const response = await fetch("/api/utils/models?query=&limit=0", {
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -1149,7 +1467,7 @@ function App() {
       try {
         setSelectedBatchRunDetail(null);
         setBatchRunDetailLoading(Boolean(selectedBatchRunId));
-        await loadBatchRunDetail(selectedBatchRunId, controller.signal);
+        await loadBatchRunDetail(selectedBatchRunId, selectedBatchMemberRunIds, controller.signal);
       } catch (error) {
         if (!controller.signal.aborted) {
           setSelectedBatchRunDetail(null);
@@ -1166,186 +1484,53 @@ function App() {
     setBatchStreamStatus(selectedBatchRunId ? "connecting" : "idle");
     void run();
     return () => controller.abort();
-  }, [loadBatchRunDetail, selectedBatchRunId]);
+  }, [loadBatchRunDetail, selectedBatchMemberRunKey, selectedBatchRunId]);
 
   useEffect(() => {
     if (!selectedBatchRunId) {
       setBatchStreamStatus("idle");
+      setBatchStreamEvents([]);
       return;
     }
 
-    const source = new EventSource(`/api/dataset/batch/${selectedBatchRunId}/stream`);
+    let cancelled = false;
+    const controller = new AbortController();
     setBatchStreamStatus("connecting");
+    setBatchStreamEvents([]);
 
-    function updateRunRow(runId: string, patch: Partial<BatchRunRow>) {
-      setBatchRuns((current) =>
-        current.map((run) => (run.run_id === runId ? { ...run, ...patch } : run)),
-      );
-    }
+    let intervalId = 0;
 
-    function updateRunDetail(patch: Partial<BatchRunDetail>) {
-      setSelectedBatchRunDetail((current) =>
-        current && current.batch_run_id === selectedBatchRunId ? { ...current, ...patch } : current,
-      );
-    }
-
-    source.addEventListener("batch_snapshot", (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as {
-        run_id: string;
-        status: BatchRunRow["status"];
-        saved: number;
-        failed: number;
-        queued: number;
-        running: number;
-        requested_runs: number;
-      };
-      setBatchStreamStatus("live");
-      updateRunRow(payload.run_id, {
-        status: payload.status,
-        saved: payload.saved,
-        failed: payload.failed,
-        queued: payload.queued,
-        running: payload.running,
-      });
-      updateRunDetail({
-        status: payload.status,
-        requested_runs: payload.requested_runs,
-        saved: payload.saved,
-        failed: payload.failed,
-        queued: payload.queued,
-        running: payload.running,
-      });
-    });
-
-    source.addEventListener("progress", (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as {
-        run_id: string;
-        status: BatchRunRow["status"];
-        saved: number;
-        failed: number;
-        queued: number;
-        running: number;
-        requested_runs: number;
-      };
-      setBatchStreamStatus("live");
-      updateRunRow(payload.run_id, {
-        status: payload.status,
-        saved: payload.saved,
-        failed: payload.failed,
-        queued: payload.queued,
-        running: payload.running,
-      });
-      updateRunDetail({
-        status: payload.status,
-        requested_runs: payload.requested_runs,
-        saved: payload.saved,
-        failed: payload.failed,
-        queued: payload.queued,
-        running: payload.running,
-      });
-    });
-
-    source.addEventListener("dataset_complete", (event) => {
-      const messageEvent = event as MessageEvent;
-      const payload = JSON.parse(messageEvent.data) as {
-        run_id: string;
-        dataset_id: number | null;
-        status: "saved" | "failed";
-        topic: string | null;
-        agent: string | null;
-        score: number | null;
-        cost: number | null;
-        category: string | null;
-        error: string | null;
-      };
-      setBatchStreamStatus("live");
-      setBatchStreamEvents((current) =>
-        [
-          {
-            id: messageEvent.lastEventId || `${payload.run_id}-${payload.status}-${current.length}`,
-            runId: payload.run_id,
-            datasetId: payload.dataset_id,
-            status: payload.status,
-            topic: payload.topic,
-            agent: payload.agent,
-            score: payload.score,
-            cost: payload.cost,
-            category: payload.category,
-            error: payload.error,
-          },
-          ...current.filter((entry) => entry.runId !== payload.run_id).slice(0, 7),
-        ],
-      );
-      setSelectedBatchRunDetail((current) => {
-        if (!current || current.batch_run_id !== selectedBatchRunId) {
-          return current;
+    async function refreshSelectedBatch() {
+      try {
+        const [, detail] = await Promise.all([
+          loadBatchRuns(controller.signal),
+          loadBatchRunDetail(selectedBatchRunId, selectedBatchMemberRunIds, controller.signal),
+        ]);
+        if (!cancelled) {
+          const terminal = detail && ["completed", "failed", "cancelled"].includes(detail.status);
+          setBatchStreamStatus(terminal ? "completed" : "live");
+          if (terminal && intervalId) {
+            window.clearInterval(intervalId);
+          }
         }
-        const nextResults = current.results.some((result) => result.run_id === payload.run_id)
-          ? current.results.map((result) =>
-              result.run_id === payload.run_id
-                ? {
-                    ...result,
-                    dataset_id: payload.dataset_id,
-                    status: payload.status,
-                    topic: payload.topic,
-                    agent: payload.agent,
-                    error: payload.error,
-                  }
-                : result,
-            )
-          : [
-              {
-                index: current.results.length,
-                run_id: payload.run_id,
-                dataset_id: payload.dataset_id,
-                status: payload.status,
-                topic: payload.topic,
-                agent: payload.agent,
-                error: payload.error,
-              },
-              ...current.results,
-            ];
-        return { ...current, results: nextResults };
-      });
-    });
+      } catch {
+        if (!cancelled && !controller.signal.aborted) {
+          setBatchStreamStatus("offline");
+        }
+      }
+    }
 
-    source.addEventListener("batch_complete", (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as {
-        run_id: string;
-        status: BatchRunRow["status"];
-        saved: number;
-        failed: number;
-        queued: number;
-        running: number;
-        requested_runs: number;
-      };
-      setBatchStreamStatus("live");
-      updateRunRow(payload.run_id, {
-        status: payload.status,
-        saved: payload.saved,
-        failed: payload.failed,
-        queued: payload.queued,
-        running: payload.running,
-      });
-      updateRunDetail({
-        status: payload.status,
-        requested_runs: payload.requested_runs,
-        saved: payload.saved,
-        failed: payload.failed,
-        queued: payload.queued,
-        running: payload.running,
-      });
-      setBatchRunsRefreshKey((current) => current + 1);
-    });
-
-    source.onerror = () => {
-      setBatchStreamStatus("offline");
-    };
+    void refreshSelectedBatch();
+    intervalId = window.setInterval(() => {
+      void refreshSelectedBatch();
+    }, 3000);
 
     return () => {
-      source.close();
+      cancelled = true;
+      controller.abort();
+      window.clearInterval(intervalId);
     };
-  }, [selectedBatchRunId]);
+  }, [loadBatchRunDetail, loadBatchRuns, selectedBatchMemberRunKey, selectedBatchRunId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1376,6 +1561,20 @@ function App() {
     void loadSettings();
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!settings?.default_model) {
+      return;
+    }
+
+    setGenerationForm((current) => {
+      const currentModel = current.model.trim();
+      if (currentModel && currentModel !== LEGACY_GENERATION_MODEL_DEFAULT) {
+        return current;
+      }
+      return { ...current, model: settings.default_model };
+    });
+  }, [settings?.default_model]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1473,6 +1672,10 @@ function App() {
     try {
       setGenerationSubmitting(true);
       setGenerationMessage("");
+      const requestGroupId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `batch-${Date.now()}`;
 
       const topics = generationForm.topics
         .split("\n")
@@ -1482,15 +1685,38 @@ function App() {
         .split(",")
         .map((value) => value.trim())
         .filter(Boolean);
+      const sourceDatasetIds = generationForm.sourceDatasetIds
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+      const personalityInstructions = generationForm.personalityInstructions.trim();
+      const sourceMaterial =
+        sourceDatasetIds.length > 0 && personalityInstructions
+          ? [...sourceDatasetIds, personalityInstructions]
+          : sourceDatasetIds.length > 0
+            ? sourceDatasetIds
+            : personalityInstructions || null;
 
       const response = await fetch("/api/dataset/batch/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: Number(generationForm.amount),
+          request_group_id: requestGroupId,
           topics,
           agent_types: agentTypes,
+          allow_topic_variations: generationForm.allowTopicVariations,
+          conversation_length_mode: generationForm.conversationLengthMode,
           ex_amt: Number(generationForm.exAmt),
+          auto_merge_related: false,
+          auto_merge_similarity_threshold: Number(globalMergeThreshold),
+          source_material: sourceMaterial,
+          source_material_mode: generationForm.sourceMaterialMode,
+          source_material_example_selection: generationForm.sourceMaterialExampleSelection,
+          source_material_example_limit: Number(generationForm.sourceMaterialExampleLimit),
+          grading_lens: generationForm.gradingLens,
           random_agent: false,
           max_concurrency: Number(generationForm.maxConcurrency),
           max_retries: 1,
@@ -1505,11 +1731,22 @@ function App() {
       }
 
       const batchIds = payload.data?.batch_run_ids ?? [];
+      const autoMerge = payload.data?.auto_merge;
+      const autoMergeSuffix =
+        autoMerge?.requested && autoMerge.message
+          ? ` Auto-merge: ${autoMerge.message}${
+              autoMerge.status === "merged" && autoMerge.result?.created_dataset_ids?.length
+                ? ` New dataset IDs: ${autoMerge.result.created_dataset_ids.join(", ")}.`
+                : ""
+            }`
+          : "";
       setGenerationMessage(
-        batchIds.length > 0 ? `Batch queued successfully. Run IDs: ${batchIds.join(", ")}` : payload.message,
+        batchIds.length > 0
+          ? `Batch queued successfully. Batch group: ${requestGroupId}.${autoMergeSuffix}`
+          : `${payload.message}${autoMergeSuffix}`,
       );
-      if (batchIds[0]) {
-        setSelectedBatchRunId(batchIds[0]);
+      if (batchIds.length > 0) {
+        setSelectedBatchRunId(requestGroupId);
       }
       setBatchRunsRefreshKey((current) => current + 1);
     } catch (error) {
@@ -1539,6 +1776,7 @@ function App() {
   }
 
   function handleOpenDatasetFromDashboard(datasetId: number) {
+    setDatasetsRefreshKey((current) => current + 1);
     setActiveView("datasets");
     setSelectedDatasetId(datasetId);
   }
@@ -1572,13 +1810,55 @@ function App() {
   }
 
   function handleRefreshDatasets() {
-    setDatasetsRefreshKey((current) => current + 1);
-    setToast({ tone: "success", message: "Refreshing dataset library." });
-  }
+      setDatasetsRefreshKey((current) => current + 1);
+      setToast({ tone: "success", message: "Refreshing dataset library." });
+    }
 
   function handleRefreshBatchRuns() {
     setBatchRunsRefreshKey((current) => current + 1);
     setToast({ tone: "success", message: "Refreshing batch monitor." });
+  }
+
+  async function handleClearCompletedBatchRuns() {
+    try {
+      const response = await fetch("/api/dataset/batch", { method: "DELETE" });
+      const payload = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: { deleted_run_ids?: string[]; deleted_count?: number };
+      };
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || `Batch clear request failed with ${response.status}`);
+      }
+
+      const deletedRunIds = new Set(payload.data?.deleted_run_ids ?? []);
+      const selectedGroupedRun = groupedBatchRuns.find((run) => run.run_id === selectedBatchRunId);
+      const selectedGroupFullyDeleted = Boolean(
+        selectedGroupedRun &&
+          (selectedGroupedRun.member_run_ids ?? []).length > 0 &&
+          (selectedGroupedRun.member_run_ids ?? []).every((runId) => deletedRunIds.has(runId)),
+      );
+      setBatchRuns((current) => current.filter((run) => !deletedRunIds.has(run.run_id)));
+      setSelectedBatchRunId((current) => {
+        if (!current) {
+          return current;
+        }
+        return deletedRunIds.has(current) || selectedGroupFullyDeleted ? "" : current;
+      });
+      if (selectedBatchRunId && (deletedRunIds.has(selectedBatchRunId) || selectedGroupFullyDeleted)) {
+        setSelectedBatchRunDetail(null);
+        setBatchRunDetailError("");
+        setBatchStreamEvents([]);
+        setBatchStreamStatus("idle");
+      }
+      setBatchRunsRefreshKey((current) => current + 1);
+      setToast({ tone: "success", message: payload.message || "Completed runs cleared." });
+    } catch (error) {
+      setToast({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to clear completed runs.",
+      });
+    }
   }
 
   function handleRefreshDocuments() {
@@ -1693,7 +1973,131 @@ function App() {
     setExamplePreviewOffset((current) => {
       const baseOffset = datasetDetail?.examplesPreviewOffset ?? current;
       return Math.min(maxOffset, Math.max(0, baseOffset + step));
-    });
+      });
+    }
+
+  async function handleRemoveExample(exampleId: number) {
+    if (!selectedDataset) {
+      return;
+    }
+
+    try {
+      setExampleDeletePendingId(exampleId);
+      const response = await fetch(`/api/dataset/examples/${exampleId}`, { method: "DELETE" });
+      const payload = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: { remaining_examples?: number };
+      };
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || `Example delete request failed with ${response.status}`);
+      }
+
+      const remainingExamples = payload.data?.remaining_examples ?? Math.max(0, selectedDataset.exampleCount - 1);
+      setDatasetDetail((current) => {
+        if (!current || current.id !== selectedDataset.id) {
+          return current;
+        }
+
+        const nextPreview = current.examplesPreview.filter((example) => example.id !== exampleId);
+        const nextLimit = current.examplesPreviewLimit || 3;
+        const nextOffset =
+          remainingExamples > 0 && nextPreview.length === 0
+            ? Math.max(0, Math.min(current.examplesPreviewOffset - nextLimit, remainingExamples - 1))
+            : current.examplesPreviewOffset;
+        if (nextOffset !== current.examplesPreviewOffset) {
+          setExamplePreviewOffset(nextOffset);
+        }
+
+        return {
+          ...current,
+          exampleCount: remainingExamples,
+          examplesPreview: nextOffset === current.examplesPreviewOffset ? nextPreview : current.examplesPreview,
+        };
+      });
+      setDatasets((current) =>
+        current.map((dataset) =>
+          dataset.id === selectedDataset.id
+            ? {
+                ...dataset,
+                exampleCount: remainingExamples,
+              }
+            : dataset,
+        ),
+      );
+      setToast({ tone: "success", message: payload.message || "Example removed." });
+      if (datasetDetail && datasetDetail.examplesPreview.length <= 1) {
+        setDatasetsRefreshKey((current) => current + 1);
+      }
+    } catch (error) {
+      setToast({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to remove example.",
+      });
+    } finally {
+      setExampleDeletePendingId(null);
+    }
+  }
+
+  async function handleUpdateExample(exampleId: number, instruction: string, response: string) {
+    if (!selectedDataset) {
+      return;
+    }
+
+    try {
+      setExampleSavePendingId(exampleId);
+      const payload = {
+        instruction: instruction.trim(),
+        response: response.trim(),
+      };
+      const responseResult = await fetch(`/api/dataset/examples/${exampleId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const responsePayload = (await responseResult.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: {
+          example?: ExamplePreview & { dataset_id?: number };
+        };
+      };
+      if (!responseResult.ok || responsePayload.success === false) {
+        throw new Error(responsePayload.message || `Example update request failed with ${responseResult.status}`);
+      }
+
+      const updatedExample = responsePayload.data?.example;
+      if (!updatedExample) {
+        throw new Error("Example update response did not include the saved example.");
+      }
+
+      setDatasetDetail((current) => {
+        if (!current || current.id !== selectedDataset.id) {
+          return current;
+        }
+        return {
+          ...current,
+          examplesPreview: current.examplesPreview.map((example) =>
+            example.id === exampleId
+              ? {
+                  ...example,
+                  instruction: updatedExample.instruction,
+                  response: updatedExample.response,
+                }
+              : example,
+          ),
+        };
+      });
+      setToast({ tone: "success", message: responsePayload.message || "Example updated." });
+    } catch (error) {
+      setToast({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to update example.",
+      });
+      throw error;
+    } finally {
+      setExampleSavePendingId(null);
+    }
   }
 
   function handleExportDataset() {
@@ -1850,29 +2254,59 @@ function App() {
     }
   }
 
-  async function handleBatchAction(action: "pause" | "resume" | "stop" | "restart-failed") {
+  async function handleBatchAction(action: BatchAction) {
     if (!selectedBatchRunId) {
       return;
     }
 
     try {
       setBatchActionPending(action);
-      const response = await fetch(`/api/dataset/batch/${selectedBatchRunId}/${action}`, {
-        method: "POST",
-      });
-      const payload = (await response.json()) as {
-        success?: boolean;
-        message?: string;
-        data?: BatchRunDetail | { current_summary?: BatchRunDetail };
-      };
-      if (!response.ok || payload.success === false) {
-        throw new Error(payload.message || `Batch action failed with ${response.status}`);
+      const targetRunIds = selectedBatchMemberRunIds.length > 0 ? selectedBatchMemberRunIds : [selectedBatchRunId];
+      const results = await Promise.all(
+        targetRunIds.map(async (runId) => {
+          const response = await fetch(
+            action === "delete" ? `/api/dataset/batch/${runId}` : `/api/dataset/batch/${runId}/${action}`,
+            {
+              method: action === "delete" ? "DELETE" : "POST",
+            },
+          );
+          const payload = (await response.json()) as {
+            success?: boolean;
+            message?: string;
+            data?: BatchRunDetail | { current_summary?: BatchRunDetail };
+          };
+          if (!response.ok || payload.success === false) {
+            throw new Error(payload.message || `Batch action failed with ${response.status}`);
+          }
+          return payload;
+        }),
+      );
+      const payload = results[0];
+
+      if (action === "delete") {
+        const currentIndex = groupedBatchRuns.findIndex((run) => run.run_id === selectedBatchRunId);
+        const nextRun = groupedBatchRuns[currentIndex + 1] ?? groupedBatchRuns[currentIndex - 1] ?? null;
+
+        setBatchRuns((current) =>
+          current.filter((run) => (run.request_group_id || run.run_id) !== selectedBatchRunId),
+        );
+        setSelectedBatchRunId(nextRun?.run_id ?? "");
+        setSelectedBatchRunDetail(null);
+        setBatchRunDetailError("");
+        setBatchStreamEvents([]);
+        setBatchStreamStatus(nextRun ? "connecting" : "idle");
+        setToast({ tone: "success", message: payload.message || "Batch run removed." });
+        return;
       }
 
-      const nextDetail =
-        payload.data && "current_summary" in payload.data
-          ? payload.data.current_summary ?? null
-          : (payload.data as BatchRunDetail | undefined) ?? null;
+      const nextDetails = results
+        .map((entry) =>
+          entry.data && "current_summary" in entry.data
+            ? entry.data.current_summary ?? null
+            : (entry.data as BatchRunDetail | undefined) ?? null,
+        )
+        .filter((entry): entry is BatchRunDetail => Boolean(entry));
+      const nextDetail = aggregateBatchRunDetail(nextDetails, selectedBatchRunId);
       if (nextDetail) {
         setSelectedBatchRunDetail(nextDetail);
       }
@@ -1885,6 +2319,109 @@ function App() {
       });
     } finally {
       setBatchActionPending("");
+    }
+  }
+
+  function handleOpenTargetedMerge() {
+    if (selectedDatasetId > 0) {
+      setTargetedMergeDatasetIds((current) =>
+        current.length > 0 ? current : [selectedDatasetId],
+      );
+    }
+    setTargetedMergeThreshold(globalMergeThreshold);
+    setIsTargetedMergeOpen(true);
+  }
+
+  function handleToggleMergeDataset(datasetId: number) {
+    setTargetedMergeDatasetIds((current) =>
+      current.includes(datasetId) ? current.filter((value) => value !== datasetId) : [...current, datasetId],
+    );
+  }
+
+  async function handleSubmitTargetedMerge() {
+    if (targetedMergeDatasetIds.length < 2) {
+      return;
+    }
+
+    try {
+      setTargetedMergePending(true);
+      const response = await fetch("/api/dataset/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataset_ids: targetedMergeDatasetIds,
+          dataset_similarity_threshold: Number(targetedMergeThreshold),
+          delete_originals: targetedMergeDeleteOriginals,
+        }),
+      });
+      const payload = (await response.json()) as MergeResponse;
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || `Merge request failed with ${response.status}`);
+      }
+
+      const createdIds = payload.data?.created_dataset_ids ?? [];
+      setIsTargetedMergeOpen(false);
+      setTargetedMergeDatasetIds([]);
+      setTargetedMergeDeleteOriginals(false);
+      setDatasetsRefreshKey((current) => current + 1);
+      if (createdIds.length > 0) {
+        setSelectedDatasetId(createdIds[0]);
+      }
+      setToast({
+        tone: "success",
+        message:
+          payload.message ||
+          (createdIds.length > 0
+            ? `Merge completed. New dataset ID ${createdIds[0]}.`
+            : "Selected datasets merged."),
+      });
+    } catch (error) {
+      setToast({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to merge selected datasets.",
+      });
+    } finally {
+      setTargetedMergePending(false);
+    }
+  }
+
+  async function handleConfirmGlobalMerge() {
+    try {
+      setGlobalMergePending(true);
+      const response = await fetch("/api/dataset/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataset_similarity_threshold: Number(globalMergeThreshold),
+          delete_originals: globalMergeDeleteOriginals,
+        }),
+      });
+      const payload = (await response.json()) as MergeResponse;
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || `Merge request failed with ${response.status}`);
+      }
+
+      const createdIds = payload.data?.created_dataset_ids ?? [];
+      setIsGlobalMergeConfirmOpen(false);
+      setDatasetsRefreshKey((current) => current + 1);
+      if (createdIds.length > 0) {
+        setSelectedDatasetId(createdIds[0]);
+      }
+      setToast({
+        tone: "success",
+        message:
+          payload.message ||
+          (createdIds.length > 0
+            ? `Library merge completed. New dataset ID ${createdIds[0]}.`
+            : "Library merge completed."),
+      });
+    } catch (error) {
+      setToast({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to merge related datasets.",
+      });
+    } finally {
+      setGlobalMergePending(false);
     }
   }
 
@@ -1952,6 +2489,33 @@ function App() {
     });
   }
 
+  function handleToggleGenerationSourceDataset(datasetId: number) {
+    setGenerationForm((current) => {
+      const parsedIds = current.sourceDatasetIds
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+
+      const nextIds = parsedIds.includes(datasetId)
+        ? parsedIds.filter((value) => value !== datasetId)
+        : [...parsedIds, datasetId];
+
+      return {
+        ...current,
+        sourceDatasetIds: nextIds.join(", "),
+      };
+    });
+  }
+
+  function handleClearGenerationSourceDatasets() {
+    setGenerationForm((current) => ({
+      ...current,
+      sourceDatasetIds: "",
+    }));
+  }
+
   function handleClearExportDatasets() {
     setExportForm((current) => ({
       ...current,
@@ -1977,9 +2541,9 @@ function App() {
       }
 
       const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+      const filename =
+        filenameFromContentDisposition(response.headers.get("Content-Disposition")) || `export-rerun-${exportId}.jsonl`;
+      triggerBrowserDownload(blob, filename);
 
       setToast({ tone: "success", message: "Export rerun completed and opened." });
 
@@ -2038,9 +2602,10 @@ function App() {
 
       const historyId = response.headers.get("X-Export-History-Id");
       const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+      const filename =
+        filenameFromContentDisposition(response.headers.get("Content-Disposition")) ||
+        `dataset-export-${historyId || "download"}.jsonl`;
+      triggerBrowserDownload(blob, filename);
 
       setExportMessage(historyId ? `Export created. History ID ${historyId}.` : "Export created.");
       setExportForm(defaultExportForm);
@@ -2108,26 +2673,52 @@ function App() {
           deletePending={datasetDeletePending}
           datasets={datasets}
           datasetsError={datasetsError}
+          exampleDeletePendingId={exampleDeletePendingId}
+          exampleSavePendingId={exampleSavePendingId}
+          globalMergeDeleteOriginals={globalMergeDeleteOriginals}
+          globalMergePending={globalMergePending}
+          globalMergeThreshold={globalMergeThreshold}
+          isGlobalMergeConfirmOpen={isGlobalMergeConfirmOpen}
+          isTargetedMergeOpen={isTargetedMergeOpen}
           onCategoryChange={setActiveCategory}
+          onClearMergeDatasets={() => setTargetedMergeDatasetIds([])}
           onCloseView={() => setIsDatasetViewOpen(false)}
           onCloseDeleteConfirm={() => setIsDeleteConfirmOpen(false)}
+          onCloseGlobalMergeConfirm={() => setIsGlobalMergeConfirmOpen(false)}
+          onCloseTargetedMerge={() => setIsTargetedMergeOpen(false)}
+          onConfirmGlobalMerge={() => void handleConfirmGlobalMerge()}
           onCopyId={() => void handleCopyDatasetId()}
           onDelete={() => void handleDeleteDataset()}
           onExampleShift={handleExampleShift}
+          onGlobalMergeDeleteOriginalsChange={setGlobalMergeDeleteOriginals}
+          onGlobalMergeThresholdChange={setGlobalMergeThreshold}
+          onOpenGlobalMergeConfirm={() => setIsGlobalMergeConfirmOpen(true)}
+          onOpenTargetedMerge={handleOpenTargetedMerge}
+          onRemoveExample={(exampleId) => void handleRemoveExample(exampleId)}
+          onUpdateExample={(exampleId, instruction, response) => handleUpdateExample(exampleId, instruction, response)}
           onExport={handleExportDataset}
           onOpenDeleteConfirm={() => setIsDeleteConfirmOpen(true)}
           onRefresh={handleRefreshDatasets}
           onSelectDataset={setSelectedDatasetId}
+          onSubmitTargetedMerge={() => void handleSubmitTargetedMerge()}
+          onTargetedMergeDeleteOriginalsChange={setTargetedMergeDeleteOriginals}
+          onTargetedMergeThresholdChange={setTargetedMergeThreshold}
+          onToggleMergeDataset={handleToggleMergeDataset}
           onView={() => setIsDatasetViewOpen(true)}
           isDeleteConfirmOpen={isDeleteConfirmOpen}
           isViewOpen={isDatasetViewOpen}
+          mergePending={targetedMergePending}
           selectedDataset={selectedDataset}
+          targetedMergeDatasetIds={targetedMergeDatasetIds}
+          targetedMergeDeleteOriginals={targetedMergeDeleteOriginals}
+          targetedMergeThreshold={targetedMergeThreshold}
           trimmedSearch={trimmedSearch}
         />
       ) : null}
       {activeView === "generation" ? (
         <GenerationView
           actionPending={batchActionPending}
+          availableDatasets={datasets.map((dataset) => ({ id: dataset.id, name: dataset.name }))}
           detailLoading={batchRunDetailLoading}
           detailError={batchRunDetailError}
           form={generationForm}
@@ -2135,15 +2726,21 @@ function App() {
           modelLoading={modelOptionsLoading}
           modelOptions={modelOptions}
           onBatchAction={(action) => void handleBatchAction(action)}
+          onClearSourceDatasets={handleClearGenerationSourceDatasets}
           onFormChange={(updater) => setGenerationForm((current) => updater(current))}
           onOpenDataset={handleOpenDatasetFromDashboard}
           onOpenModelPicker={() => handleOpenModelPicker("generation")}
+          onClearCompletedRuns={() => void handleClearCompletedBatchRuns()}
           onRefreshRuns={handleRefreshBatchRuns}
-          onReset={() => setGenerationForm(defaultGenerationForm)}
+          onReset={() =>
+            setGenerationForm(buildDefaultGenerationForm(settings?.default_model ?? defaultGenerationForm.model))
+          }
           onSelectRun={setSelectedBatchRunId}
           onSubmit={() => void handleBatchLaunch()}
+          onToggleSourceDataset={handleToggleGenerationSourceDataset}
           runs={batchRuns}
           runsError={batchRunsError}
+          selectedSourceDatasetIds={selectedGenerationSourceDatasetIds}
           selectedRunDetail={selectedBatchRunDetail}
           selectedRunId={selectedBatchRunId}
           streamEvents={batchStreamEvents}

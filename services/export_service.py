@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import re
 import zipfile
 
 from sqlmodel import Session, select
@@ -10,6 +11,10 @@ from app.core.database import Dataset, ExportHistory, TrainingExample
 from app.core.generics import get_latest_grading_result, new_run_id
 from routes.dataset_models import ExportRequest
 from services.embedding_service import embed_text, is_semantic_duplicate, parse_embedding_json
+
+
+_USER_LINE_RE = re.compile(r"^User:\s*(.+)$")
+_ASSISTANT_LINE_RE = re.compile(r"^Assistant:\s*(.+)$")
 
 
 def _dataset_passes_score_filter(dataset: Dataset, min_score: float | None) -> bool:
@@ -28,9 +33,15 @@ def _dataset_passes_score_filter(dataset: Dataset, min_score: float | None) -> b
 
 
 def _format_sharegpt(example: TrainingExample) -> dict:
+    conversations = [{"from": "system", "value": "You are a helpful assistant."}]
+    parsed_messages = _parse_instruction_as_conversation(example.instruction)
+    if parsed_messages:
+        conversations.extend(parsed_messages)
+        conversations.append({"from": "gpt", "value": example.response})
+        return {"conversations": conversations}
     return {
-        "conversations": [
-            {"from": "system", "value": "You are a helpful assistant."},
+        "conversations": conversations
+        + [
             {"from": "human", "value": example.instruction},
             {"from": "gpt", "value": example.response},
         ]
@@ -38,9 +49,15 @@ def _format_sharegpt(example: TrainingExample) -> dict:
 
 
 def _format_chatml(example: TrainingExample) -> dict:
+    messages = [{"role": "system", "content": "You are a helpful assistant."}]
+    parsed_messages = _parse_instruction_as_conversation(example.instruction, user_role="user", assistant_role="assistant")
+    if parsed_messages:
+        messages.extend(parsed_messages)
+        messages.append({"role": "assistant", "content": example.response})
+        return {"messages": messages}
     return {
-        "messages": [
-            {"role": "system", "content": "You are a helpful assistant."},
+        "messages": messages
+        + [
             {"role": "user", "content": example.instruction},
             {"role": "assistant", "content": example.response},
         ]
@@ -53,6 +70,51 @@ def _format_alpaca(example: TrainingExample) -> dict:
         "input": "",
         "output": example.response,
     }
+
+
+def _parse_instruction_as_conversation(
+    instruction: str,
+    *,
+    user_role: str = "human",
+    assistant_role: str = "gpt",
+) -> list[dict[str, str]] | None:
+    lines = [line.strip() for line in instruction.splitlines() if line.strip()]
+    if not lines:
+        return None
+
+    messages: list[dict[str, str]] = []
+    expected_role = user_role
+    saw_assistant_turn = False
+
+    for line in lines:
+        user_match = _USER_LINE_RE.match(line)
+        assistant_match = _ASSISTANT_LINE_RE.match(line)
+        if user_match:
+            role = user_role
+            content = user_match.group(1).strip()
+        elif assistant_match:
+            role = assistant_role
+            content = assistant_match.group(1).strip()
+        else:
+            return None
+
+        if role != expected_role or not content:
+            return None
+        if role == assistant_role:
+            saw_assistant_turn = True
+        messages.append(
+            {
+                ("from" if user_role == "human" else "role"): role,
+                ("value" if user_role == "human" else "content"): content,
+            }
+        )
+        expected_role = assistant_role if role == user_role else user_role
+
+    if messages[-1][("from" if user_role == "human" else "role")] != user_role:
+        return None
+    if not saw_assistant_turn and len(messages) == 1:
+        return messages
+    return messages
 
 
 def _serialize_export_record(example: TrainingExample, export_format: str) -> dict:
@@ -160,6 +222,15 @@ def _build_export_files(
     return zip_path, len(train_rows), len(val_rows)
 
 
+def _normalized_output_filename(output_path: str) -> str:
+    filename = os.path.basename(output_path)
+    if os.path.splitext(filename)[1]:
+        return filename
+    if zipfile.is_zipfile(output_path):
+        return f"{filename}.zip"
+    return f"{filename}.jsonl"
+
+
 def run_export_request(session: Session, body: ExportRequest) -> tuple[str, ExportHistory, dict]:
     dataset_ids = []
     seen_ids: set[int] = set()
@@ -206,7 +277,7 @@ def run_export_request(session: Session, body: ExportRequest) -> tuple[str, Expo
                 "max_examples": body.max_examples,
             }
         ),
-        output_filename=os.path.basename(output_path),
+        output_filename=_normalized_output_filename(output_path),
         output_path=output_path,
         total_examples=len(examples),
         train_examples=train_count,

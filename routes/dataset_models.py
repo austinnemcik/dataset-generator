@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -45,15 +45,24 @@ class IngestExamples(BaseModel):
 
 class BatchGeneration(BaseModel):
     amount: int
+    request_group_id: str | None = None
     agent_types: list[AgentType] | None = None
     topics: list[str]
+    allow_topic_variations: bool = False
     ex_amt: int
+    auto_merge_related: bool = False
+    auto_merge_similarity_threshold: float = 0.65
     random_agent: bool = False
     max_concurrency: int = 3
     max_retries: int = 2
     retry_backoff_seconds: float = 2.0
     seed: int | None = None
     source_material: str | list[int | str] | None = None
+    source_material_mode: Literal["style_only", "content_and_style"] = "content_and_style"
+    source_material_example_limit: int = 250
+    source_material_example_selection: Literal["first", "random"] = "random"
+    grading_lens: Literal["balanced_quality", "voice_alignment"] = "balanced_quality"
+    conversation_length_mode: Literal["varied", "short", "balanced", "long"] = "varied"
     model: str | None = None
 
     @field_validator("amount")
@@ -70,11 +79,25 @@ class BatchGeneration(BaseModel):
             raise ValueError("ex_amt must be in the range 1-50.")
         return value
 
+    @field_validator("auto_merge_similarity_threshold")
+    @classmethod
+    def validate_auto_merge_similarity_threshold(cls, value: float) -> float:
+        if value <= 0 or value > 1:
+            raise ValueError("auto_merge_similarity_threshold must be in the range (0, 1].")
+        return value
+
     @field_validator("max_concurrency")
     @classmethod
     def validate_max_concurrency(cls, value: int) -> int:
         if value < 1 or value > 50:
             raise ValueError("max_concurrency must be in the range 1-50.")
+        return value
+
+    @field_validator("source_material_example_limit")
+    @classmethod
+    def validate_source_material_example_limit(cls, value: int) -> int:
+        if value < 1 or value > 500:
+            raise ValueError("source_material_example_limit must be in the range 1-500.")
         return value
 
     @field_validator("topics")
@@ -125,6 +148,8 @@ class Generation(BaseModel):
     topic: str
     amount: int
     source_material: str | list[int | str] | None = None
+    source_material_mode: Literal["style_only", "content_and_style"] = "content_and_style"
+    conversation_length_mode: Literal["varied", "short", "balanced", "long"] = "varied"
     model: str | None = None
 
     @field_validator("topic")
@@ -138,6 +163,16 @@ class Generation(BaseModel):
         if value <= 0:
             raise ValueError("amount must be greater than 0.")
         return value
+
+
+class UpdateTrainingExample(BaseModel):
+    instruction: str
+    response: str
+
+    @field_validator("instruction", "response")
+    @classmethod
+    def validate_example_text(cls, value: str) -> str:
+        return _clean_required_text(value, field_name="value")
 
 
 class MergeRequest(BaseModel):

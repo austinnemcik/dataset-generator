@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 from sqlalchemy import text
@@ -34,9 +36,28 @@ def _combined_dataset_metadata(all_datasets: list[Dataset]) -> tuple[float, floa
 
 
 def discover_merge_pools(
-    session: Session, dataset_similarity_threshold: float, merge_run_id: str | None = None
-) -> tuple[list[list[int]], int]:
-    datasets = session.exec(select(Dataset).order_by(Dataset.id)).all()
+    session: Session,
+    dataset_similarity_threshold: float,
+    merge_run_id: str | None = None,
+    candidate_dataset_ids: Sequence[int] | None = None,
+) -> tuple[list[list[int]], int, int]:
+    candidate_ids: list[int] | None = None
+    if candidate_dataset_ids is not None:
+        candidate_ids = []
+        seen_ids: set[int] = set()
+        for dataset_id in candidate_dataset_ids:
+            if dataset_id in seen_ids:
+                continue
+            seen_ids.add(dataset_id)
+            candidate_ids.append(dataset_id)
+
+    stmt = select(Dataset).order_by(Dataset.id)
+    if candidate_ids is not None:
+        if not candidate_ids:
+            return [], 0, 0
+        stmt = stmt.where(Dataset.id.in_(candidate_ids))
+
+    datasets = session.exec(stmt).all()
     centroids: list[tuple[int, list[float]]] = []
     skipped_without_embeddings = 0
 
@@ -61,6 +82,7 @@ def discover_merge_pools(
 
     pools: list[list[int]] = []
     assigned: set[int] = set()
+    skipped_dimension_mismatch = 0
     for i, (dataset_id, centroid) in enumerate(centroids):
         if dataset_id in assigned:
             continue
@@ -69,6 +91,9 @@ def discover_merge_pools(
         for j in range(i + 1, len(centroids)):
             other_id, other_centroid = centroids[j]
             if other_id in assigned:
+                continue
+            if len(centroid) != len(other_centroid):
+                skipped_dimension_mismatch += 1
                 continue
             similarity = float(cosine_similarity(centroid, other_centroid))
             if similarity >= dataset_similarity_threshold:
@@ -81,235 +106,266 @@ def discover_merge_pools(
         (
             f"[merge_datasets] {run_tag}Discovery complete "
             f"threshold={dataset_similarity_threshold} centroid_datasets={len(centroids)} "
-            f"pools_found={len(pools)} skipped_without_embeddings={skipped_without_embeddings}"
+            f"pools_found={len(pools)} skipped_without_embeddings={skipped_without_embeddings} "
+            f"skipped_dimension_mismatch={skipped_dimension_mismatch} "
+            f"scoped_dataset_count={(len(candidate_ids) if candidate_ids is not None else 'all')}"
         ),
         "INFO",
     )
-    return pools, skipped_without_embeddings
+    return pools, skipped_without_embeddings, skipped_dimension_mismatch
+
+
+async def execute_merge_request(
+    body: MergeRequest,
+    session: Session,
+    *,
+    merge_run_id: str | None = None,
+    candidate_dataset_ids: Sequence[int] | None = None,
+) -> dict[str, object]:
+    errors = 0
+    merged_pool_count = 0
+    total_examples_before_dedupe = 0
+    total_examples_after_dedupe = 0
+    total_deduped = 0
+    created_dataset_ids: list[int] = []
+    effective_merge_run_id = merge_run_id or new_run_id()
+
+    log_prefix = f"[merge_datasets][run_id={effective_merge_run_id}]"
+    logger.saveToLog(
+        (
+            f"{log_prefix} Starting merge request explicit_ids_count={(len(body.dataset_ids) if body.dataset_ids else 0)} "
+            f"delete_originals={body.delete_originals} dataset_similarity_threshold={body.dataset_similarity_threshold} "
+            f"candidate_dataset_ids={(list(candidate_dataset_ids) if candidate_dataset_ids is not None else 'all')}"
+        ),
+        "INFO",
+    )
+
+    session.exec(text("SELECT 1")).all()
+
+    if body.dataset_similarity_threshold <= 0 or body.dataset_similarity_threshold > 1:
+        raise ValueError("dataset_similarity_threshold must be in the range (0, 1].")
+
+    if body.dataset_ids:
+        explicit_pool = _explicit_merge_pool(body.dataset_ids)
+        pools = [explicit_pool] if explicit_pool else []
+        skipped_without_embeddings = 0
+        skipped_dimension_mismatch = 0
+        discovery_mode = False
+        logger.saveToLog(f"{log_prefix} Using explicit merge pool: {explicit_pool}", "INFO")
+    else:
+        pools, skipped_without_embeddings, skipped_dimension_mismatch = discover_merge_pools(
+            session,
+            body.dataset_similarity_threshold,
+            effective_merge_run_id,
+            candidate_dataset_ids=candidate_dataset_ids,
+        )
+        discovery_mode = True
+
+    if not pools:
+        logger.saveToLog(
+            (
+                f"{log_prefix} No merge candidates found "
+                f"(discovery_mode={discovery_mode}, threshold={body.dataset_similarity_threshold})"
+            ),
+            "WARNING",
+        )
+        return {
+            "success": False,
+            "status_code": 404,
+            "message": "No merge candidates found.",
+            "errors": None,
+            "data": {
+                "discovery_mode": discovery_mode,
+                "merge_run_id": effective_merge_run_id,
+                "dataset_similarity_threshold": body.dataset_similarity_threshold,
+                "pools_found": 0,
+                "skipped_without_embeddings": skipped_without_embeddings,
+                "skipped_dimension_mismatch": skipped_dimension_mismatch,
+            },
+        }
+
+    for pool_idx, pool in enumerate(pools, start=1):
+        logger.saveToLog(f"{log_prefix} Processing pool_index={pool_idx} dataset_ids={pool}", "INFO")
+        all_datasets: list[Dataset] = []
+        all_examples: list[TrainingExample] = []
+        for dataset_id in pool:
+            ds = session.get(Dataset, dataset_id)
+            if not ds:
+                errors += 1
+                continue
+            all_datasets.append(ds)
+            examples = session.exec(select(TrainingExample).where(TrainingExample.dataset_id == dataset_id)).all()
+            all_examples.extend(examples)
+
+        if discovery_mode and len(all_datasets) < 2:
+            errors += 1
+            logger.saveToLog(
+                (
+                    f"{log_prefix} Skipping pool_index={pool_idx} after fetch because it has "
+                    f"fewer than 2 valid datasets in discovery mode. pool={pool}"
+                ),
+                "WARNING",
+            )
+            continue
+        if not all_examples:
+            errors += 1
+            logger.saveToLog(f"{log_prefix} Skipping pool_index={pool_idx} with no examples. pool={pool}", "WARNING")
+            continue
+
+        (
+            pool_generation_cost,
+            pool_grading_cost,
+            pool_total_cost,
+            merged_model,
+            merged_category,
+        ) = _combined_dataset_metadata(all_datasets)
+        pool_models = sorted({str(ds.model).strip() for ds in all_datasets if getattr(ds, "model", None)})
+
+        total_examples_before_dedupe += len(all_examples)
+        deduped_examples: list[TrainingExample] = []
+        existing_embeddings: list[list[float]] = []
+        deduped_in_pool = 0
+        for ex in all_examples:
+            parsed_embedding = parse_embedding(ex.embedding)
+            comparable_embeddings = (
+                [embedding for embedding in existing_embeddings if len(embedding) == len(parsed_embedding)]
+                if parsed_embedding is not None
+                else []
+            )
+            if parsed_embedding is not None and is_duplicate(parsed_embedding, comparable_embeddings, threshold=0.8):
+                deduped_in_pool += 1
+                continue
+            if parsed_embedding is not None:
+                existing_embeddings.append(parsed_embedding)
+            deduped_examples.append(ex)
+
+        if not deduped_examples:
+            errors += 1
+            logger.saveToLog(
+                f"{log_prefix} Pool_index={pool_idx} fully deduped, no surviving examples. pool={pool}",
+                "WARNING",
+            )
+            continue
+
+        naming_examples = [{"instruction": ex.instruction, "response": ex.response} for ex in deduped_examples]
+        meta = await run_naming_agent(naming_examples)
+        if not meta or "name" not in meta or "description" not in meta:
+            errors += 1
+            logger.saveToLog(
+                f"{log_prefix} Naming agent returned invalid metadata. pool_index={pool_idx} pool={pool}",
+                "ERROR",
+            )
+            continue
+
+        merged_examples = [
+            TrainingExample(
+                prompt=ex.prompt,
+                instruction=ex.instruction,
+                response=ex.response,
+                embedding=ex.embedding,
+            )
+            for ex in deduped_examples
+        ]
+        dataset = Dataset(
+            name=meta["name"],
+            description=meta["description"],
+            category=merged_category,
+            model=merged_model,
+            generation_cost=pool_generation_cost,
+            grading_cost=pool_grading_cost,
+            total_cost=pool_total_cost,
+            examples=merged_examples,
+        )
+        session.add(dataset)
+        session.flush()
+
+        if body.delete_originals is True:
+            for ds in all_datasets:
+                history_rows = session.exec(select(ImportHistory).where(ImportHistory.dataset_id == ds.id)).all()
+                for history in history_rows:
+                    history.dataset_id = None
+                    session.add(history)
+                session.delete(ds)
+
+        merged_pool_count += 1
+        total_examples_after_dedupe += len(deduped_examples)
+        total_deduped += deduped_in_pool
+        created_dataset_ids.append(dataset.id)
+        logger.saveToLog(
+            (
+                f"{log_prefix} Pool merged pool_index={pool_idx} pool={pool} new_dataset_id={dataset.id} "
+                f"new_dataset_name={dataset.name!r} models={pool_models if pool_models else ['unknown']} "
+                f"generation_cost={pool_generation_cost} grading_cost={pool_grading_cost} "
+                f"total_cost={pool_total_cost} examples_before={len(all_examples)} "
+                f"examples_after={len(deduped_examples)} deduped={deduped_in_pool}"
+            ),
+            "INFO",
+        )
+
+    if merged_pool_count < 1:
+        session.rollback()
+        logger.saveToLog(
+            f"{log_prefix} Merge completed with zero successful pools; rolled back. pools_requested={len(pools)} errors={errors}",
+            "WARNING",
+        )
+        return {
+            "success": False,
+            "status_code": 422,
+            "message": "No pools were successfully merged.",
+            "errors": errors,
+            "data": {
+                "discovery_mode": discovery_mode,
+                "merge_run_id": effective_merge_run_id,
+                "pools_requested": len(pools),
+                "skipped_without_embeddings": skipped_without_embeddings,
+                "skipped_dimension_mismatch": skipped_dimension_mismatch,
+            },
+        }
+
+    session.commit()
+    logger.saveToLog(
+        (
+            f"{log_prefix} Merge committed successfully discovery_mode={discovery_mode} "
+            f"pools_requested={len(pools)} pools_merged={merged_pool_count} "
+            f"created_dataset_ids={created_dataset_ids} examples_before={total_examples_before_dedupe} "
+            f"examples_after={total_examples_after_dedupe} deduped_examples={total_deduped} errors={errors}"
+        ),
+        "INFO",
+    )
+    return {
+        "success": True,
+        "status_code": 201,
+        "message": f"Successfully merged {merged_pool_count} pool(s).",
+        "errors": errors,
+        "data": {
+            "discovery_mode": discovery_mode,
+            "merge_run_id": effective_merge_run_id,
+            "dataset_similarity_threshold": body.dataset_similarity_threshold,
+            "pools_requested": len(pools),
+            "pools_merged": merged_pool_count,
+            "created_dataset_ids": created_dataset_ids,
+            "examples_before_dedupe": total_examples_before_dedupe,
+            "examples_after_dedupe": total_examples_after_dedupe,
+            "deduped_examples": total_deduped,
+            "skipped_without_embeddings": skipped_without_embeddings,
+            "skipped_dimension_mismatch": skipped_dimension_mismatch,
+        },
+    }
 
 
 def register_merge_routes(router: APIRouter):
     @router.post("/merge")
     async def merge_datasets(body: MergeRequest, session: Session = Depends(get_session)):
-        errors = 0
-        merged_pool_count = 0
-        total_examples_before_dedupe = 0
-        total_examples_after_dedupe = 0
-        total_deduped = 0
-        created_dataset_ids: list[int] = []
         merge_run_id = new_run_id()
 
         try:
-            log_prefix = f"[merge_datasets][run_id={merge_run_id}]"
-            logger.saveToLog(
-                (
-                    f"{log_prefix} Starting merge request explicit_ids_count={(len(body.dataset_ids) if body.dataset_ids else 0)} "
-                    f"delete_originals={body.delete_originals} dataset_similarity_threshold={body.dataset_similarity_threshold}"
-                ),
-                "INFO",
-            )
-
-            session.exec(text("SELECT 1")).all()
-
-            if body.dataset_similarity_threshold <= 0 or body.dataset_similarity_threshold > 1:
-                raise ValueError("dataset_similarity_threshold must be in the range (0, 1].")
-
-            if body.dataset_ids:
-                explicit_pool = _explicit_merge_pool(body.dataset_ids)
-                pools = [explicit_pool] if explicit_pool else []
-                skipped_without_embeddings = 0
-                discovery_mode = False
-                logger.saveToLog(f"{log_prefix} Using explicit merge pool: {explicit_pool}", "INFO")
-            else:
-                pools, skipped_without_embeddings = discover_merge_pools(
-                    session, body.dataset_similarity_threshold, merge_run_id
-                )
-                discovery_mode = True
-
-            if not pools:
-                logger.saveToLog(
-                    (
-                        f"{log_prefix} No merge candidates found "
-                        f"(discovery_mode={discovery_mode}, threshold={body.dataset_similarity_threshold})"
-                    ),
-                    "WARNING",
-                )
-                return response_builder(
-                    success=False,
-                    statusCode=404,
-                    message="No merge candidates found.",
-                    data={
-                        "discovery_mode": discovery_mode,
-                        "merge_run_id": merge_run_id,
-                        "dataset_similarity_threshold": body.dataset_similarity_threshold,
-                        "pools_found": 0,
-                        "skipped_without_embeddings": skipped_without_embeddings,
-                    },
-                )
-
-            for pool_idx, pool in enumerate(pools, start=1):
-                logger.saveToLog(f"{log_prefix} Processing pool_index={pool_idx} dataset_ids={pool}", "INFO")
-                all_datasets: list[Dataset] = []
-                all_examples: list[TrainingExample] = []
-                for dataset_id in pool:
-                    ds = session.get(Dataset, dataset_id)
-                    if not ds:
-                        errors += 1
-                        continue
-                    all_datasets.append(ds)
-                    examples = session.exec(
-                        select(TrainingExample).where(TrainingExample.dataset_id == dataset_id)
-                    ).all()
-                    all_examples.extend(examples)
-
-                if discovery_mode and len(all_datasets) < 2:
-                    errors += 1
-                    logger.saveToLog(
-                        (
-                            f"{log_prefix} Skipping pool_index={pool_idx} after fetch because it has "
-                            f"fewer than 2 valid datasets in discovery mode. pool={pool}"
-                        ),
-                        "WARNING",
-                    )
-                    continue
-                if not all_examples:
-                    errors += 1
-                    logger.saveToLog(f"{log_prefix} Skipping pool_index={pool_idx} with no examples. pool={pool}", "WARNING")
-                    continue
-
-                (
-                    pool_generation_cost,
-                    pool_grading_cost,
-                    pool_total_cost,
-                    merged_model,
-                    merged_category,
-                ) = _combined_dataset_metadata(all_datasets)
-                pool_models = sorted({str(ds.model).strip() for ds in all_datasets if getattr(ds, "model", None)})
-
-                total_examples_before_dedupe += len(all_examples)
-                deduped_examples: list[TrainingExample] = []
-                existing_embeddings: list[list[float]] = []
-                deduped_in_pool = 0
-                for ex in all_examples:
-                    parsed_embedding = parse_embedding(ex.embedding)
-                    if parsed_embedding is not None and is_duplicate(parsed_embedding, existing_embeddings, threshold=0.8):
-                        deduped_in_pool += 1
-                        continue
-                    if parsed_embedding is not None:
-                        existing_embeddings.append(parsed_embedding)
-                    deduped_examples.append(ex)
-
-                if not deduped_examples:
-                    errors += 1
-                    logger.saveToLog(
-                        f"{log_prefix} Pool_index={pool_idx} fully deduped, no surviving examples. pool={pool}",
-                        "WARNING",
-                    )
-                    continue
-
-                naming_examples = [{"instruction": ex.instruction, "response": ex.response} for ex in deduped_examples]
-                meta = await run_naming_agent(naming_examples)
-                if not meta or "name" not in meta or "description" not in meta:
-                    errors += 1
-                    logger.saveToLog(
-                        f"{log_prefix} Naming agent returned invalid metadata. pool_index={pool_idx} pool={pool}",
-                        "ERROR",
-                    )
-                    continue
-
-                merged_examples = [
-                    TrainingExample(
-                        prompt=ex.prompt,
-                        instruction=ex.instruction,
-                        response=ex.response,
-                        embedding=ex.embedding,
-                    )
-                    for ex in deduped_examples
-                ]
-                dataset = Dataset(
-                    name=meta["name"],
-                    description=meta["description"],
-                    category=merged_category,
-                    model=merged_model,
-                    generation_cost=pool_generation_cost,
-                    grading_cost=pool_grading_cost,
-                    total_cost=pool_total_cost,
-                    examples=merged_examples,
-                )
-                session.add(dataset)
-                session.flush()
-
-                if body.delete_originals is True:
-                    for ds in all_datasets:
-                        history_rows = session.exec(
-                            select(ImportHistory).where(ImportHistory.dataset_id == ds.id)
-                        ).all()
-                        for history in history_rows:
-                            history.dataset_id = None
-                            session.add(history)
-                        session.delete(ds)
-
-                merged_pool_count += 1
-                total_examples_after_dedupe += len(deduped_examples)
-                total_deduped += deduped_in_pool
-                created_dataset_ids.append(dataset.id)
-                logger.saveToLog(
-                    (
-                        f"{log_prefix} Pool merged pool_index={pool_idx} pool={pool} new_dataset_id={dataset.id} "
-                        f"new_dataset_name={dataset.name!r} models={pool_models if pool_models else ['unknown']} "
-                        f"generation_cost={pool_generation_cost} grading_cost={pool_grading_cost} "
-                        f"total_cost={pool_total_cost} examples_before={len(all_examples)} "
-                        f"examples_after={len(deduped_examples)} deduped={deduped_in_pool}"
-                    ),
-                    "INFO",
-                )
-
-            if merged_pool_count < 1:
-                session.rollback()
-                logger.saveToLog(
-                    f"{log_prefix} Merge completed with zero successful pools; rolled back. pools_requested={len(pools)} errors={errors}",
-                    "WARNING",
-                )
-                return response_builder(
-                    success=False,
-                    statusCode=422,
-                    message="No pools were successfully merged.",
-                    errors=errors,
-                    data={
-                        "discovery_mode": discovery_mode,
-                        "merge_run_id": merge_run_id,
-                        "pools_requested": len(pools),
-                        "skipped_without_embeddings": skipped_without_embeddings,
-                    },
-                )
-
-            session.commit()
-            logger.saveToLog(
-                (
-                    f"{log_prefix} Merge committed successfully discovery_mode={discovery_mode} "
-                    f"pools_requested={len(pools)} pools_merged={merged_pool_count} "
-                    f"created_dataset_ids={created_dataset_ids} examples_before={total_examples_before_dedupe} "
-                    f"examples_after={total_examples_after_dedupe} deduped_examples={total_deduped} errors={errors}"
-                ),
-                "INFO",
-            )
+            result = await execute_merge_request(body, session, merge_run_id=merge_run_id)
             return response_builder(
-                success=True,
-                statusCode=201,
-                message=f"Successfully merged {merged_pool_count} pool(s).",
-                errors=errors,
-                data={
-                    "discovery_mode": discovery_mode,
-                    "merge_run_id": merge_run_id,
-                    "dataset_similarity_threshold": body.dataset_similarity_threshold,
-                    "pools_requested": len(pools),
-                    "pools_merged": merged_pool_count,
-                    "created_dataset_ids": created_dataset_ids,
-                    "examples_before_dedupe": total_examples_before_dedupe,
-                    "examples_after_dedupe": total_examples_after_dedupe,
-                    "deduped_examples": total_deduped,
-                    "skipped_without_embeddings": skipped_without_embeddings,
-                },
+                success=bool(result["success"]),
+                statusCode=int(result["status_code"]),
+                message=str(result["message"]),
+                errors=result.get("errors"),
+                data=result.get("data"),
             )
         except ValueError as e:
             logger.saveToLog(f"[merge_datasets][run_id={merge_run_id}] Validation failed: {e}", "ERROR")

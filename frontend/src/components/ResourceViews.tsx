@@ -630,22 +630,18 @@ export function ExportsView({
           </label>
 
           <div className="export-toggle-group">
-            <label className="export-toggle">
-              <input
-                checked={exportDedupePass}
-                onChange={(event) => onExportFieldChange("dedupePass", event.target.checked)}
-                type="checkbox"
-              />
-              <span>Dedupe pass</span>
-            </label>
-            <label className="export-toggle">
-              <input
-                checked={exportShuffle}
-                onChange={(event) => onExportFieldChange("shuffle", event.target.checked)}
-                type="checkbox"
-              />
-              <span>Shuffle</span>
-            </label>
+            <ToggleField
+              checked={exportDedupePass}
+              compact
+              label="Dedupe pass"
+              onChange={(checked) => onExportFieldChange("dedupePass", checked)}
+            />
+            <ToggleField
+              checked={exportShuffle}
+              compact
+              label="Shuffle"
+              onChange={(checked) => onExportFieldChange("shuffle", checked)}
+            />
           </div>
         </div>
 
@@ -939,3 +935,4 @@ export function SettingsView({
     </section>
   );
 }
+import { ToggleField } from "./ToggleField";

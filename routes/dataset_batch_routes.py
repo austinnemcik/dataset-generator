@@ -3,8 +3,16 @@ import asyncio
 from fastapi import APIRouter, Depends, Query, Request
 from sqlmodel import Session, select
 
-from agent import pause_batch_run, restart_failed_batch_run, resume_batch_run, stop_batch_run
+from agent import (
+    delete_batch_run,
+    delete_terminal_batch_runs,
+    pause_batch_run,
+    restart_failed_batch_run,
+    resume_batch_run,
+    stop_batch_run,
+)
 from agent.automation import get_batch_run_status, start_generation
+from agent.batch_summary import summarize_display_status
 from app.core.database import BatchRun, engine, get_session
 from app.core.generics import TimedLabel, response_builder, timer
 from routes.dataset_models import BatchGeneration
@@ -21,7 +29,7 @@ RunAllocation = dict[str, object]
 BatchSummary = dict[str, object]
 
 
-def _source_material_mode(
+def _source_material_input_kind(
     resolved_source_material: str | None,
     source_material_dataset_ids: list[int],
     source_material_text_block_count: int,
@@ -75,6 +83,10 @@ def _aggregate_batch_summary(
     topics: list[str],
     agent_types: list,
     random_agent: bool,
+    source_material_mode: str,
+    source_material_example_limit: int,
+    source_material_example_selection: str,
+    grading_lens: str,
     source_material_dataset_ids: list[int],
     source_material_text_block_count: int,
     resolved_source_material: str | None,
@@ -94,7 +106,11 @@ def _aggregate_batch_summary(
         "random_agent_applied": random_agent,
         "source_material_dataset_ids": source_material_dataset_ids,
         "source_material_text_block_count": source_material_text_block_count,
-        "source_material_mode": _source_material_mode(
+        "source_material_mode": source_material_mode,
+        "source_material_example_limit": source_material_example_limit,
+        "source_material_example_selection": source_material_example_selection,
+        "grading_lens": grading_lens,
+        "source_material_input_kind": _source_material_input_kind(
             resolved_source_material,
             source_material_dataset_ids,
             source_material_text_block_count,
@@ -133,20 +149,35 @@ def register_batch_routes(router: APIRouter):
         agent_types = body.agent_types or []
         topics = body.topics
         amount = body.amount
+        allow_topic_variations = body.allow_topic_variations
         ex_amt = body.ex_amt
         random_agent = body.random_agent
         max_concurrency = body.max_concurrency
         max_retries = body.max_retries
         retry_backoff_seconds = body.retry_backoff_seconds
         seed = body.seed
+        request_group_id = body.request_group_id
         source_material = body.source_material
+        source_material_mode = body.source_material_mode
+        source_material_example_limit = body.source_material_example_limit
+        source_material_example_selection = body.source_material_example_selection
+        grading_lens = body.grading_lens
+        conversation_length_mode = body.conversation_length_mode
         model = body.model
+        auto_merge_related = body.auto_merge_related
+        auto_merge_similarity_threshold = body.auto_merge_similarity_threshold
         try:
             (
                 resolved_source_material,
                 source_material_dataset_ids,
                 source_material_text_block_count,
-            ) = resolve_source_material(source_material, session)
+            ) = resolve_source_material(
+                source_material,
+                session,
+                dataset_example_limit=source_material_example_limit,
+                dataset_example_selection=source_material_example_selection,
+                seed=seed,
+            )
         except ValueError as e:
             return response_builder(success=False, message=str(e), statusCode=400)
 
@@ -176,6 +207,9 @@ def register_batch_routes(router: APIRouter):
                         agent=selected_agent,
                         model=model,
                         source_material=resolved_source_material,
+                        source_material_mode=source_material_mode,
+                        conversation_length_mode=conversation_length_mode,
+                        grading_lens=grading_lens,
                         ex_amt=ex_amt,
                         random_agent=random_agent,
                         max_concurrency=slot_max_concurrency,
@@ -183,6 +217,9 @@ def register_batch_routes(router: APIRouter):
                         retry_backoff_seconds=retry_backoff_seconds,
                         seed=topic_seed,
                         slot_key=f"{slot['topic']}|{selected_agent.value if selected_agent else 'random'}",
+                        allow_topic_variations=allow_topic_variations,
+                        request_group_id=request_group_id,
+                        wait_for_completion=False,
                     )
                     summary["selected_agent"] = selected_agent.value if selected_agent else None
                     return summary
@@ -207,6 +244,10 @@ def register_batch_routes(router: APIRouter):
             topics=topics,
             agent_types=agent_types,
             random_agent=random_agent,
+            source_material_mode=source_material_mode,
+            source_material_example_limit=source_material_example_limit,
+            source_material_example_selection=source_material_example_selection,
+            grading_lens=grading_lens,
             source_material_dataset_ids=source_material_dataset_ids,
             source_material_text_block_count=source_material_text_block_count,
             resolved_source_material=resolved_source_material,
@@ -216,6 +257,28 @@ def register_batch_routes(router: APIRouter):
             max_concurrency=max_concurrency,
         )
 
+        if auto_merge_related:
+            aggregate_summary["auto_merge"] = {
+                "requested": True,
+                "threshold": auto_merge_similarity_threshold,
+                "status": "skipped",
+                "message": "Automatic merge will not run at launch time because the batch is now queued asynchronously.",
+            }
+        else:
+            aggregate_summary["auto_merge"] = {
+                "requested": False,
+                "threshold": auto_merge_similarity_threshold,
+                "status": "disabled",
+                "message": "Automatic merge disabled.",
+            }
+
+        if aggregate_summary["requested_runs"] > 0:
+            return response_builder(
+                success=True,
+                message="Successfully queued batch generation run.",
+                statusCode=202,
+                data=aggregate_summary,
+            )
         if aggregate_summary["saved"] > 0:
             return response_builder(
                 success=True,
@@ -225,7 +288,7 @@ def register_batch_routes(router: APIRouter):
             )
         return response_builder(
             success=False,
-            message="Generation finished.. but received zero successful dataset generations",
+            message="Generation queueing finished, but no batch runs were created.",
             statusCode=422,
             data=aggregate_summary,
         )
@@ -265,7 +328,15 @@ def register_batch_routes(router: APIRouter):
                 data.append(
                     {
                         "run_id": run.run_id,
-                        "status": run.status,
+                        "request_group_id": summary.get("request_group_id"),
+                        "status": summarize_display_status(
+                            batch_status=run.status,
+                            queued=run.queued_runs,
+                            running=run.running_runs,
+                            completed=run.completed_runs,
+                            failed=run.failed_runs,
+                            total=run.total_runs,
+                        ),
                         "requested_runs": run.total_runs,
                         "saved": run.completed_runs,
                         "failed": run.failed_runs,
@@ -460,10 +531,11 @@ def register_batch_routes(router: APIRouter):
             reset_summary = restart_failed_batch_run(run_id)
             if not reset_summary:
                 return response_builder(success=False, message="Batch run not found.", statusCode=404)
-            resumed_summary = await resume_batch_run(run_id)
+            asyncio.create_task(resume_batch_run(run_id))
+            resumed_summary = get_batch_run_status(run_id)
             return response_builder(
                 success=True,
-                message="Failed batch items requeued and resumed.",
+                message="Failed batch items requeued and resumed in the background.",
                 statusCode=200,
                 data={"reset_summary": reset_summary, "current_summary": resumed_summary},
             )
@@ -474,6 +546,50 @@ def register_batch_routes(router: APIRouter):
             return response_builder(
                 success=False,
                 message="An error occurred while restarting failed batch items.",
+                statusCode=500,
+            )
+
+    @router.delete("/batch/{run_id}")
+    def delete_batch_endpoint(run_id: str):
+        try:
+            summary = delete_batch_run(run_id)
+            if not summary:
+                return response_builder(success=False, message="Batch run not found.", statusCode=404)
+            return response_builder(
+                success=True,
+                message="Batch run removed from the monitor.",
+                statusCode=200,
+                data={"deleted_run_id": run_id, "deleted_summary": summary},
+            )
+        except ValueError as e:
+            return response_builder(success=False, message=str(e), statusCode=400)
+        except Exception as e:
+            logger.saveToLog(f"[delete_batch_endpoint] Unexpected error: {e}", "ERROR")
+            return response_builder(
+                success=False,
+                message="An error occurred while deleting the batch run.",
+                statusCode=500,
+            )
+
+    @router.delete("/batch")
+    def delete_terminal_batches_endpoint():
+        try:
+            result = delete_terminal_batch_runs()
+            return response_builder(
+                success=True,
+                message=(
+                    "No completed runs to remove."
+                    if result["deleted_count"] == 0
+                    else f"Removed {result['deleted_count']} completed run(s) from the monitor."
+                ),
+                statusCode=200,
+                data=result,
+            )
+        except Exception as e:
+            logger.saveToLog(f"[delete_terminal_batches_endpoint] Unexpected error: {e}", "ERROR")
+            return response_builder(
+                success=False,
+                message="An error occurred while clearing completed batch runs.",
                 statusCode=500,
             )
 

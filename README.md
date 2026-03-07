@@ -2,6 +2,36 @@
 
 A FastAPI + SQLModel service for generating, ingesting, and exporting training datasets.
 
+## Future plans
+When exporting a dataset to jsonl, add an optional additional file for {dataset_name}summary.json that has metadata incl. examples, avg_prompt tokens, avg_completion_tokens, duplicates removed during lifecycle of dataset, label_distribution(correct/incorrect) once we add different types. 
+
+Add hard negative generation
+- Generate correct answer, incorrect answer, and partially correct answer labelled. 
+Useful for DPO, ORPO, and RLHF training.
+
+Track prompt patterns and enforce diversity.
+Example metrics:
+question types
+instruction verbs
+domains
+Avoid datasets that look like:
+Explain X
+Explain Y
+Explain Z
+Instead ensure mix:
+Explain
+Summarize
+Compare
+Generate
+Translate
+Rewrite
+Classify
+
+Built in evaluation benchmarks we can use to test finetunin against.
+
+Order training examples / datasets by difficulty and complexity. 
+
+
 ## Local setup (quick start)
 
 1. Use Python 3.12.

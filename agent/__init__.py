@@ -1,5 +1,7 @@
 from .embeddings import cosine_similarity, get_embedding, is_duplicate
 from .automation import (
+    delete_batch_run,
+    delete_terminal_batch_runs,
     get_batch_run_status,
     pause_batch_run,
     restart_failed_batch_run,
@@ -17,6 +19,8 @@ from .types import AgentType
 __all__ = [
     "AgentType",
     "cosine_similarity",
+    "delete_batch_run",
+    "delete_terminal_batch_runs",
     "generate_dataset",
     "get_batch_run_status",
     "get_embedding",
